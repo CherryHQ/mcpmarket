@@ -13,34 +13,56 @@
   },
   "scripts": {
     "preinstall": "npx only-allow pnpm",
-    "test": "pnpm run test --filter ./packages/*",
-    "build": "pnpm run build --filter ./packages/*",
-    "clean": "pnpm run clean --filter ./packages/*",
+    "test": "pnpm -r test",
+    "build": "pnpm -r build",
+    "clean": "pnpm -r clean",
     "list": "pnpm list --recursive",
     "publish:all": "pnpm publish -r --access public",
-    "publish:single": "pnpm publish --filter @mcpmarket/{package} --access public",
+    "publish:single": "pnpm publish --filter {package} --access public",
     "version:all": "pnpm version:bump -r",
     "changeset": "changeset",
     "version": "changeset version",
-    "release": "pnpm build && pnpm publish:all"
+    "release": "pnpm build && pnpm publish:all",
+    "format": "prettier --write .",
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx --fix",
+    "lint:check": "eslint . --ext .js,.jsx,.ts,.tsx",
+    "prepare": "husky install"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/CherryHQ/mcpmarket.git"
   },
   "keywords": [
-    "minecraft",
     "mcp",
     "server"
   ],
-  "author": "",
-  "license": "ISC",
+  "author": "CherryHQ",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/CherryHQ/mcpmarket/issues"
   },
   "homepage": "https://github.com/CherryHQ/mcpmarket#readme",
-  "packageManager": "pnpm@10.4.1+sha512.c753b6c3ad7afa13af388fa6d808035a008e30ea9993f58c6663e2bc5ff21679aa834db094987129aa4d488b86df57f7b634981b2f827cdcacc698cc0cfb88af",
   "devDependencies": {
-    "@changesets/cli": "^2.28.1"
+    "@changesets/cli": "^2.28.1",
+    "@commitlint/cli": "^19.8.0",
+    "@commitlint/config-conventional": "^19.8.0",
+    "@typescript-eslint/eslint-plugin": "^8.27.0",
+    "@typescript-eslint/parser": "^8.27.0",
+    "eslint": "^9.22.0",
+    "eslint-config-prettier": "^10.1.1",
+    "eslint-plugin-import": "^2.31.0",
+    "eslint-plugin-prettier": "^5.2.3",
+    "husky": "^8.0.0",
+    "lint-staged": "^15.5.0",
+    "prettier": "^3.5.3"
+  },
+  "lint-staged": {
+    "packages/**/*.{js,jsx,ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ]
   }
 }
