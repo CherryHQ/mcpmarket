@@ -41,6 +41,88 @@ packages/              # MCP servers collection
 └── ...               # More servers
 ```
 
+## 📦 Publishing Guide
+
+### Prerequisites
+
+1. Login to npm:
+
+   ```bash
+   pnpm login
+   ```
+
+2. Ensure you have access to the @mcpmarket organization
+   ```bash
+   npm whoami --registry=https://registry.npmjs.org/
+   ```
+
+### Publishing Process
+
+#### Single Package Publishing
+
+```bash
+# 1. Build the specific package
+pnpm build --filter @mcpmarket/your-package
+
+# 2. Publish the package
+pnpm publish:single --filter @mcpmarket/your-package
+```
+
+#### Batch Publishing
+
+```bash
+# 1. Create a changeset (document your changes)
+pnpm changeset
+# Follow the prompts to:
+# - Select packages to publish
+# - Choose version bump type (patch/minor/major)
+# - Write change descriptions
+
+# 2. Commit the changeset
+git add .
+git commit -m "chore: add changeset"
+
+# 3. Update versions and generate changelog
+pnpm version
+
+# 4. Build all packages
+pnpm build
+
+# 5. Publish packages
+pnpm publish:all
+```
+
+### Package Requirements
+
+Each package should have:
+
+```json
+{
+  "name": "@mcpmarket/your-package",
+  "publishConfig": {
+    "access": "public"
+  }
+}
+```
+
+### Unpublishing (if needed)
+
+You can unpublish a package within 72 hours of publishing:
+
+```bash
+# Unpublish specific version
+npm unpublish @mcpmarket/your-package@0.0.1 --force
+
+# Unpublish entire package
+npm unpublish @mcpmarket/your-package --force
+```
+
+Note: Once unpublished:
+
+- The same version number cannot be reused
+- The package name is reserved for 24 hours
+- Cannot unpublish if other packages depend on it
+
 ## 🛠 Development
 
 ```bash
@@ -59,16 +141,12 @@ pnpm clean
 
 ## 📝 Contributing
 
-1. Fork the repository
-2. Create your feature branch
-3. Make your changes
-4. Create a changeset:
-   ```bash
-   pnpm changeset
-   ```
-5. Commit your changes
-6. Push to your branch
-7. Create a Pull Request
+Please see our [Contributing Guide](CONTRIBUTING.md) for details about:
+
+- Development workflow
+- Creating new packages
+- Publishing packages
+- Pull request process
 
 ## 📜 License
 

@@ -22,10 +22,9 @@ yarn-error.log*
 
 # IDE
 .idea/
-.vscode/
 *.swp
 *.swo
 
 # OS
 .DS_Store
-Thumbs.db 
+Thumbs.db
