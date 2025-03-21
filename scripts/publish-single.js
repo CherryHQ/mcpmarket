@@ -6,5 +6,5 @@ if (!packageName) {
   process.exit(1);
 }
 
-const command = `pnpm --filter ${packageName} exec changeset publish`;
+const command = `pnpm changeset publish --filter ${packageName}`;
 execSync(command, { stdio: 'inherit' });

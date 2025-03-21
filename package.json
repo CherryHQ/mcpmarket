@@ -19,7 +19,7 @@
     "clean": "pnpm -r clean",
     "list": "pnpm list --recursive",
     "publish:all": "pnpm publish -r changeset publish",
-    "publish:single": "cross-env PACKAGE=$1 pnpm --filter $PACKAGE execchangeset publish",
+    "publish:single": "node scripts/publish-single.js",
     "changeset": "changeset",
     "version": "changeset version",
     "release": "pnpm build && pnpm publish:all",
