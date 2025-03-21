@@ -2,7 +2,7 @@
 
 [English](README.md) | [中文](README.zh-CN.md)
 
-Minecraft 服务器控制面板（MCP）服务集合。
+模型上下文协议（Model Context Protocol，MCP）服务集合，用于管理和集成 LLM 服务。
 
 [![NPM Organization](https://img.shields.io/badge/npm-@mcpmarket-blue.svg)](https://www.npmjs.com/org/mcpmarket)
 [![pnpm](https://img.shields.io/badge/maintained%20with-pnpm-cc00ff.svg)](https://pnpm.io/)
@@ -13,6 +13,7 @@ Minecraft 服务器控制面板（MCP）服务集合。
 - 简单的安装和配置流程
 - TypeScript 支持
 - Monorepo 结构，便于维护
+- 与 LLM 服务的无缝集成
 
 ## 📦 可用服务
 

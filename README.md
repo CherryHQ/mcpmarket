@@ -2,7 +2,7 @@
 
 [English](README.md) | [中文](README.zh-CN.md)
 
-A collection of MCP (Minecraft Control Panel) servers for managing Minecraft servers.
+A collection of MCP (Model Context Protocol) servers for managing and integrating with LLM services.
 
 [![NPM Organization](https://img.shields.io/badge/npm-@mcpmarket-blue.svg)](https://www.npmjs.com/org/mcpmarket)
 [![pnpm](https://img.shields.io/badge/maintained%20with-pnpm-cc00ff.svg)](https://pnpm.io/)
@@ -13,6 +13,7 @@ A collection of MCP (Minecraft Control Panel) servers for managing Minecraft ser
 - Easy installation and configuration
 - TypeScript support
 - Monorepo structure for better maintainability
+- Seamless integration with LLM services
 
 ## 📦 Available Servers
 

@@ -1,7 +1,7 @@
 {
   "name": "mcpmarket",
   "version": "1.0.0",
-  "description": "A collection of MCP servers for Minecraft",
+  "description": "A collection of Model Context Protocol (MCP) servers for LLM integration",
   "type": "module",
   "private": true,
   "workspaces": [
