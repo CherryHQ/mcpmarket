@@ -48,4 +48,4 @@ export interface NpmPackageInfo {
     [key: string]: unknown;
   };
   [key: string]: unknown;
-} 
+}

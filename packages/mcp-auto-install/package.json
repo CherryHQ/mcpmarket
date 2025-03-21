@@ -1,11 +1,14 @@
 {
-  "name": "mcp-auto-install",
-  "version": "1.0.1",
+  "name": "@mcpmarket/mcp-auto-install",
+  "version": "0.0.2",
   "description": "MCP server that helps install other MCP servers automatically",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
     "mcp-auto-install": "dist/index.js"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "files": [
     "dist",
@@ -34,13 +37,9 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.7.0",
     "commander": "^11.1.0",
+    "node-fetch": "^3.3.2",
     "npx-scope-finder": "^1.0.0",
     "zod": "^3.22.4"
-  },
-  "devDependencies": {
-    "@types/node": "^20.10.5",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.3.3"
   },
   "engines": {
     "node": ">=18.0.0"

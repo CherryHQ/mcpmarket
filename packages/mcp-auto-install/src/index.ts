@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { MCPCliApp } from "./cli.js";
+import { MCPCliApp } from './cli.js';
 
 /**
  * Main entry point for the MCP Auto Install application
@@ -10,7 +10,7 @@ async function main() {
     const cliApp = new MCPCliApp();
     cliApp.run();
   } catch (error) {
-    console.error("Failed to start the application:", error);
+    console.error('Failed to start the application:', error);
     process.exit(1);
   }
 }
