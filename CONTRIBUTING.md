@@ -99,7 +99,7 @@ Key formatting rules:
    - Include usage examples
    - Document configuration options
 
-3. Testing
+3. [] Testing
    - Write unit tests
    - Include integration tests if needed
    - Test with different Node.js versions
