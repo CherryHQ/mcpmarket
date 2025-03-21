@@ -1,22 +1,21 @@
 # @mcpmarket/auto-install
 
-[English](README.md) | [中文](README.zh-CN.md)
-
-A powerful tool for automatically installing and managing Model Context Protocol (MCP) servers. It streamlines the process of detecting, installing, and configuring various MCP servers, making it easier for developers to use the MCP ecosystem.
+A powerful MCP server with CLI that integrates into your client's MCP ecosystem. It enables you to install and manage other MCP servers through natural language conversations with LLMs. By default, it discovers MCP servers from the `@modelcontextprotocol` scope, but you can customize the sources using the `add-source` command.
 
 ## 🎮 Features
 
-- 🔍 Automatic detection and installation of MCP servers
-- 📦 Support for installing servers from npm packages and GitHub repositories
-- 📚 Automatic retrieval and caching of server README content
-- ⚙️ Server configuration assistance
-- ⌨️ Custom command configuration support
-- 🔄 Seamless integration with the MCP ecosystem
+- 🤖 Natural language interaction with LLMs for server installation
+- 🔍 Automatic discovery of MCP servers from `@modelcontextprotocol` scope
+- 📦 Custom server source management through GitHub repositories
+- 📚 Server documentation and README viewing
+- ⚙️ Flexible command and environment configuration
+- 🔄 Seamless integration with your MCP ecosystem
 
 ## 📋 Prerequisites
 
 - Node.js >= 18.0.0
 - npm or pnpm package manager
+- An MCP-compatible client (e.g., Claude)
 
 ## 🚀 Installation
 
@@ -34,19 +33,22 @@ npm install @mcpmarket/auto-install
 
 ```bash
 # Start the MCP Auto Install server
-mcp-auto-install
+mcp-auto-install start
 
-# Get list of available servers
+# List all registered MCP server sources
 mcp-auto-install list
 
-# Remove a server from registry
-mcp-auto-install remove <server-name>
+# Add or update a server source in the registry
+mcp-auto-install add-source <name> -r <github-url> -c <command> -d <description> [-k <keywords>] [-i <install-commands>]
 
-# Configure a server
-mcp-auto-install configure <server-name>
+# Install a server from GitHub
+mcp-auto-install install <name>
 
 # Get server README
-mcp-auto-install readme <server-name>
+mcp-auto-install readme <name>
+
+# Remove a server from registry
+mcp-auto-install remove <name>
 
 # Save server command configuration
 mcp-auto-install save-command <server-name> <command> [args...] [--env KEY=VALUE]
@@ -56,7 +58,7 @@ mcp-auto-install save-command <server-name> <command> [args...] [--env KEY=VALUE
 
 MCP Auto Install uses two configuration files:
 
-1. `mcp_settings.json`: Internal configuration file for storing server registration information
+1. `mcp_settings.json`: Internal configuration file for storing server source information
 2. External configuration file: Specified by the `MCP_SETTINGS_PATH` environment variable, used for storing server command configurations
 
 ### 🔧 Environment Variables
@@ -105,23 +107,24 @@ You can also provide server configurations in JSON format:
 }
 ```
 
-### 📦 Server Registration
+### 📦 Server Source Registration
 
-The tool automatically registers MCP servers from the `@modelcontextprotocol` scope on npm. Each server registration includes:
+Each server source registration includes:
 
 - Server name and description
-- Repository information
-- README content
-- Command configuration
-- Keywords for server type identification
+- GitHub repository URL
+- Command to run the server
+- Optional keywords for server type identification
+- Optional custom installation commands
 
 ## 📝 Version History
 
-- v1.0.0: Initial Release
-  - Basic server management functionality
-  - Automatic detection and installation
-  - README content management
-  - Configuration system
+- v0.0.3: Current Version
+  - Automatic server discovery
+  - Server source management
+  - GitHub-based installation
+  - README content viewing
+  - Command configuration system
   - CLI interface
   - External config integration
 

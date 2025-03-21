@@ -120,16 +120,16 @@ async function preloadMCPPackages(): Promise<void> {
           }
         }
       } catch (pkgError) {
+        console.error(`Error processing package ${pkg.name}:`, pkgError);
         // Silently handle package errors
-        console.log(`Error loading package ${pkg.name}: ${pkgError}`);
       }
     }
 
     // Save updated settings
     await saveSettings();
   } catch (error) {
+    console.error('Error preloading MCP packages:', error);
     // Silently handle errors
-    console.log(`Error loading packages: ${error}`);
   }
 }
 
@@ -633,7 +633,7 @@ export async function handleConfigureServer(args: {
       message: `Server '${serverName}' not found in the registry.`,
     };
   }
-  console.error('server_live');
+
   // Get README content
   const readmeResult = await handleGetServerReadme({ serverName });
 
@@ -652,7 +652,6 @@ export async function handleConfigureServer(args: {
     message: `Configuration help for ${serverName}`,
     readmeContent: readmeResult.readmeContent,
     explanation: 'Please refer to the README content for configuration instructions.',
-    // suggestedCommand: `mcp-auto-install install ${serverName}`,
   };
 }
 
