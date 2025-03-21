@@ -8,9 +8,7 @@ import {
   handleInstallServer,
   handleRegisterServer,
   handleRemoveServer,
-  handleConfigureServer,
   handleGetServerReadme,
-  // handleAutoDetect,
   saveCommandToExternalConfig,
 } from './server.js';
 
@@ -28,12 +26,8 @@ export class MCPCliApp {
   private setupCLI() {
     this.program
       .name('mcp-auto-install')
-      .description('MCP server that helps install other MCP servers automatically')
-      .version('1.0.0')
-      .option('-p, --port <number>', 'Port to run the server on', '7777')
-      .option('-h, --host <string>', 'Host to run the server on', 'localhost')
-      .option('--llm-api-key <key>', 'API key for the LLM service')
-      .option('--llm-api-endpoint <url>', 'API endpoint for the LLM service');
+      .description('A tool for managing MCP server sources and installing MCP servers from GitHub')
+      .version('0.0.3');
 
     // Add default command to start the server
     this.program
@@ -45,8 +39,8 @@ export class MCPCliApp {
 
     // Add command to register a new server
     this.program
-      .command('register <n>')
-      .description('Register a new MCP server')
+      .command('add-source <name>')
+      .description('Add or update an MCP server source in the registry')
       .requiredOption('-r, --repo <url>', 'GitHub repository URL')
       .requiredOption('-c, --command <command>', 'Command to run the server')
       .requiredOption('-d, --description <text>', 'Description of the server')
@@ -76,12 +70,10 @@ export class MCPCliApp {
 
     // Add a command to install a server
     this.program
-      .command('install <n>')
-      .description('Install an MCP server')
-      .action(async (name: string) => {
-        const result = await handleInstallServer({
-          serverName: name,
-        });
+      .command('install <name>')
+      .description('Install an MCP server from GitHub repository')
+      .action(async name => {
+        const result = await handleInstallServer({ serverName: name });
 
         if (result.success) {
           console.log(result.message);
@@ -94,48 +86,23 @@ export class MCPCliApp {
     // Add command to list registered servers
     this.program
       .command('list')
-      .description('List all registered MCP servers')
+      .description('List all registered MCP server sources')
       .action(async () => {
         const servers = await getRegisteredServers();
-
         if (servers.length === 0) {
-          console.log('No MCP servers are registered.');
-        } else {
-          console.log('Registered MCP Servers:');
-          for (const server of servers) {
-            console.log(`- ${server.name}: ${server.description}`);
-            console.log(`  Command: ${server.command}`);
-            console.log(`  Repository: ${server.repo}`);
-            if (server.keywords && server.keywords.length > 0) {
-              console.log(`  Keywords: ${server.keywords.join(', ')}`);
-            }
-            console.log();
-          }
+          console.log('No MCP server sources registered.');
+          return;
         }
-        process.exit(0);
-      });
 
-    // Add command to get help with server configuration
-    this.program
-      .command('configure <n>')
-      .description('Get help configuring an MCP server using LLM assistance')
-      .action(async (name: string) => {
-        const result = await handleConfigureServer({
-          serverName: name,
-        });
-
-        if (result.success) {
-          console.log(result.message);
-          if (result.explanation) {
-            console.log('\nExplanation:');
-            console.log(result.explanation);
+        console.log('Registered MCP server sources:');
+        for (const server of servers) {
+          console.log(`\n${server.name}`);
+          console.log(`  Description: ${server.description}`);
+          console.log(`  Repository: ${server.repo}`);
+          console.log(`  Command: ${server.command}`);
+          if (server.keywords && server.keywords.length > 0) {
+            console.log(`  Keywords: ${server.keywords.join(', ')}`);
           }
-          if (result.suggestedCommand) {
-            console.log('\nSuggested Command:');
-            console.log(result.suggestedCommand);
-          }
-        } else {
-          console.error(result.message);
         }
         process.exit(0);
       });
