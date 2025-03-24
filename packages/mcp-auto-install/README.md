@@ -2,6 +2,107 @@
 
 A powerful MCP server with CLI that integrates into your client's MCP ecosystem. It enables you to install and manage other MCP servers through natural language conversations with LLMs. By default, it discovers MCP servers from the `@modelcontextprotocol` scope, but you can customize the sources using the `add-source` command.
 
+## ✨ Features
+
+- **Natural Language Interaction**: Install and manage MCP servers through natural language conversations with LLMs
+- **Automatic Server Discovery**: Automatically discovers MCP servers from the `@modelcontextprotocol` scope
+- **Custom Source Management**: Add and manage custom MCP server sources
+- **Command Configuration**: Save and manage server commands with environment variables
+- **Server Documentation**: Access server READMEs directly through the CLI
+- **Direct MCP Connection**: Quick connection to MCP services using npx
+
+## 📦 Installation
+
+You can install this package in two ways:
+
+1. **Global Installation**:
+
+   ```bash
+   pnpm add -g @mcpmarket/mcp-auto-install
+   ```
+
+2. **Direct Execution with npx**:
+
+   ```bash
+   # Connect to MCP service
+   npx -y @mcpmarket/mcp-auto-install connect
+
+   # Use CLI commands
+   npx @mcpmarket/mcp-auto-install [command] [options]
+   ```
+
+## 🚀 Usage
+
+### Connecting to MCP Service
+
+```bash
+# Quick connection using npx
+npx -y @mcpmarket/mcp-auto-install connect
+```
+
+### Managing Server Sources
+
+```bash
+# Add a new server source
+mcp-auto-install add-source my-server -r https://github.com/username/repo -c "npx @modelcontextprotocol/server-name" -d "My MCP Server"
+
+# List registered servers
+mcp-auto-install list
+
+# Remove a server
+mcp-auto-install remove my-server
+```
+
+### Installing Servers
+
+```bash
+# Install a server
+mcp-auto-install install my-server
+```
+
+### Managing Commands
+
+```bash
+# Save a command for a server
+mcp-auto-install save-command my-server npx @modelcontextprotocol/server-name --port 3000 --env NODE_ENV=production
+```
+
+### Viewing Documentation
+
+```bash
+# Get server README
+mcp-auto-install readme my-server
+```
+
+## 🔧 Configuration
+
+The tool uses two configuration files:
+
+1. **MCP Registry** (`mcp-registry.json`): Stores information about registered MCP server sources
+
+   - Windows: `%APPDATA%\mcp\mcp-registry.json`
+   - macOS/Linux: `~/.mcp/mcp-registry.json`
+
+2. **External Configuration**: Specified by the `MCP_SETTINGS_PATH` environment variable, used for storing server command configurations
+
+### Environment Variables
+
+- `MCP_SETTINGS_PATH`: Path to the LLM (e.g., Claude) MCP service configuration file
+  ```bash
+  export MCP_SETTINGS_PATH="/Users/username/Library/Application Support/Claude/claude_desktop_config.json"
+  ```
+
+## 📝 Version History
+
+- v0.0.4: Added direct MCP connection support with npx
+- v0.0.3: Added support for npx execution and improved command management
+- v0.0.2: Added server source management and command configuration
+- v0.0.1: Initial release with basic MCP server installation functionality
+
+## 📜 License
+
+[MIT](./LICENSE)
+
 ## 🎮 Features
 
 - 🤖 Natural language interaction with LLMs for server installation
@@ -10,123 +111,13 @@ A powerful MCP server with CLI that integrates into your client's MCP ecosystem.
 - 📚 Server documentation and README viewing
 - ⚙️ Flexible command and environment configuration
 - 🔄 Seamless integration with your MCP ecosystem
+- 🔌 Quick connection to MCP services with npx
 
 ## 📋 Prerequisites
 
 - Node.js >= 18.0.0
 - npm or pnpm package manager
 - An MCP-compatible client (e.g., Claude)
-
-## 🚀 Installation
-
-```bash
-# Using pnpm (recommended)
-pnpm add @mcpmarket/auto-install
-
-# Using npm
-npm install @mcpmarket/auto-install
-```
-
-## 💡 Usage
-
-### Basic Commands
-
-```bash
-# Start the MCP Auto Install server
-mcp-auto-install start
-
-# List all registered MCP server sources
-mcp-auto-install list
-
-# Add or update a server source in the registry
-mcp-auto-install add-source <name> -r <github-url> -c <command> -d <description> [-k <keywords>] [-i <install-commands>]
-
-# Install a server from GitHub
-mcp-auto-install install <name>
-
-# Get server README
-mcp-auto-install readme <name>
-
-# Remove a server from registry
-mcp-auto-install remove <name>
-
-# Save server command configuration
-mcp-auto-install save-command <server-name> <command> [args...] [--env KEY=VALUE]
-```
-
-### ⚙️ Configuration
-
-MCP Auto Install uses two configuration files:
-
-1. `mcp_settings.json`: Internal configuration file for storing server source information
-2. External configuration file: Specified by the `MCP_SETTINGS_PATH` environment variable, used for storing server command configurations
-
-### 🔧 Environment Variables
-
-- `MCP_SETTINGS_PATH`: Path to the external configuration file (e.g., Claude's config file)
-
-Example:
-
-```bash
-export MCP_SETTINGS_PATH="/Users/username/Library/Application Support/Claude/claude_desktop_config.json"
-```
-
-### 📝 Command Configuration Format
-
-When saving command configurations, you can specify:
-
-- Command name (e.g., 'npx', 'node', 'npm', 'yarn', 'pnpm', 'cmd', 'powershell', 'bash', 'sh', 'zsh', 'fish', 'tcsh', 'csh')
-- Command arguments (e.g., '@modelcontextprotocol/server-name', '--port', '3000', '--config', 'config.json')
-- Environment variables (e.g., --env NODE_ENV=production --env DEBUG=true)
-
-Example:
-
-```bash
-# Command: npx
-# Arguments: @modelcontextprotocol/server-name --port 3000
-# Environment: NODE_ENV=production
-mcp-auto-install save-command my-server npx @modelcontextprotocol/server-name --port 3000 --env NODE_ENV=production
-```
-
-### 🔄 JSON Configuration
-
-You can also provide server configurations in JSON format:
-
-```json
-{
-  "mcpServers": {
-    "server-name": {
-      "command": "npx",
-      "args": ["@modelcontextprotocol/server-name", "--port", "3000", "--config", "config.json"],
-      "env": {
-        "NODE_ENV": "production",
-        "DEBUG": "true"
-      }
-    }
-  }
-}
-```
-
-### 📦 Server Source Registration
-
-Each server source registration includes:
-
-- Server name and description
-- GitHub repository URL
-- Command to run the server
-- Optional keywords for server type identification
-- Optional custom installation commands
-
-## 📝 Version History
-
-- v0.0.3: Current Version
-  - Automatic server discovery
-  - Server source management
-  - GitHub-based installation
-  - README content viewing
-  - Command configuration system
-  - CLI interface
-  - External config integration
 
 ## 🤝 Contributing
 
@@ -136,10 +127,6 @@ Please see our [Contributing Guide](../../CONTRIBUTING.md) for details about:
 - Creating new packages
 - Publishing packages
 - Pull request process
-
-## 📜 License
-
-ISC
 
 ## Support
 
