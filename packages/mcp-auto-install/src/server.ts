@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import { promises as fs } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
@@ -66,7 +68,7 @@ function simpleZodToJsonSchema(schema: z.ZodType<unknown>): Record<string, unkno
 }
 
 // Set path
-const SETTINGS_PATH = path.join(homedir(), 'mcp', 'mcp_settings.json');
+const SETTINGS_PATH = path.join(homedir(), 'mcp', 'mcp-registry.json');
 
 // Server settings
 let serverSettings: { servers: MCPServerInfo[] } = { servers: [] };
@@ -384,7 +386,7 @@ async function initSettings(): Promise<void> {
       const data = await fs.readFile(SETTINGS_PATH, 'utf-8');
       serverSettings = JSON.parse(data);
     } catch (error) {
-      console.log(error);
+      console.error(error);
       // If file doesn't exist, use default settings
       serverSettings = { servers: [] };
       // Save default settings
@@ -514,7 +516,14 @@ export async function startServer(): Promise<void> {
   // Start server with standard input/output
   const transport = new StdioServerTransport();
   await server.connect(transport);
+  console.error('MCP server started');
 }
+
+// Add direct execution support
+// startServer().catch(error => {
+//   console.error('Failed to start server:', error);
+//   process.exit(1);
+// });
 
 /**
  * Get list of registered servers

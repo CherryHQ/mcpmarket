@@ -11,7 +11,7 @@ import {
   handleGetServerReadme,
   saveCommandToExternalConfig,
 } from './server.js';
-
+import { checkMCPSettings } from './utils.js';
 /**
  * Command line interface for controlling MCP automatic installation servers
  */
@@ -143,35 +143,8 @@ export class MCPCliApp {
     // this.program
     //   .command("auto <request>")
     //   .description("Automatically detect and install needed MCP servers based on user request")
-    //   .option("-s, --settings <path>", "Custom path to mcp_settings.json file")
+    //   .option("-s, --settings <path>", "Custom path to mcp-registry.json file")
     //   .action(async (request: string, options) => {
-    //     try {
-    //       console.log("Analyzing request to detect needed MCP servers...");
-    //       const result = await handleAutoDetect({
-    //         userRequest: request,
-    //         settingsPath: options.settings
-    //       });
-
-    //       if (result.success) {
-    //         console.log(`✅ ${result.message}`);
-    //         if (result.serverName && result.readme) {
-    //           console.log(`\nServer: ${result.serverName}`);
-    //           console.log("\n=== README ===");
-    //           console.log(typeof result.readme === 'string'
-    //             ? `${result.readme.substring(0, 500)}...`
-    //             : "README not available in string format.");
-    //           console.log("...");
-    //           console.log("\nFull README available with:");
-    //           console.log(`mcp-auto-install readme ${result.serverName}`);
-    //         }
-    //       } else {
-    //         console.error(`❌ ${result.message}`);
-    //       }
-    //     } catch (error) {
-    //       console.error(`Error during auto-detection: ${(error as Error).message}`);
-    //     }
-    //     process.exit(0);
-    //   });
 
     // Add a command to save user command to config
     this.program
@@ -237,20 +210,7 @@ export class MCPCliApp {
    */
   public run() {
     // Check environment variables
-    if (!process.env.MCP_SETTINGS_PATH) {
-      console.warn('\n⚠️  Warning: MCP_SETTINGS_PATH environment variable not set');
-      console.warn(
-        'This environment variable is used to specify the path to the LLM (e.g., Claude) MCP service configuration file',
-      );
-      console.warn(
-        'To save commands to the LLM configuration file, please set this environment variable, for example:',
-      );
-      console.warn(
-        'export MCP_SETTINGS_PATH="/Users/username/Library/Application Support/Claude/claude_desktop_config.json"\n',
-      );
-    } else {
-      console.log(`📁 Using LLM config file: ${process.env.MCP_SETTINGS_PATH}`);
-    }
+    checkMCPSettings();
 
     this.program.parse(process.argv);
   }
