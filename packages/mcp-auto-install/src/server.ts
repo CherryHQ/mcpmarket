@@ -507,16 +507,16 @@ async function findServer(name: string): Promise<MCPServerInfo | undefined> {
  * Start MCP server
  */
 export async function startServer(): Promise<void> {
-  // Initialize settings
+  console.error('Initializing MCP server...');
   await initSettings();
 
-  // Preload MCP package information
+  console.error('Loading MCP packages...');
   await preloadMCPPackages();
 
-  // Start server with standard input/output
+  console.error('Connecting to transport...');
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error('MCP server started');
+  console.error('MCP server started and ready');
 }
 
 // Add direct execution support
