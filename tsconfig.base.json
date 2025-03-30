@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "types": ["node", "jest"],
+    "types": ["node"],
     "target": "ES2020",
     "module": "ESNext",
     "moduleResolution": "node",
