@@ -6,14 +6,14 @@ export interface MCPServerInfo {
   repo: string;
   command: string;
   description: string;
-  keywords?: string[];
+  keywords: string[];
+  readme?: string;
   installCommands?: string[];
   commandConfig?: {
     command: string;
     args: string[];
     env?: Record<string, string>;
   };
-  readme?: string;
 }
 
 /**
@@ -30,8 +30,8 @@ export interface MCPAutoInstallOptions {
  */
 export interface OperationResult {
   success: boolean;
-  message: string;
-  [key: string]: unknown;
+  message: string[];
+  data?: unknown;
 }
 
 /**
