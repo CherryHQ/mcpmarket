@@ -9,9 +9,11 @@ import {
   handleRegisterServer,
   handleRemoveServer,
   handleGetServerReadme,
+  handleConfigureServer,
+  handleParseConfig,
   saveCommandToExternalConfig,
 } from './server.js';
-import { checkMCPSettings } from './utils.js';
+import { checkMCPSettings } from './utils/utils.js';
 /**
  * Command line interface for controlling MCP automatic installation servers
  */
@@ -27,14 +29,15 @@ export class MCPCliApp {
     this.program
       .name('mcp-auto-install')
       .description('A tool for managing MCP server sources and installing MCP servers from GitHub')
-      .version('0.1.0');
+      .version('0.1.1');
 
     // Add default command to start the server
     this.program
       .command('start', { isDefault: true })
       .description('Start the MCP Auto Install server')
-      .action(async () => {
-        await startServer();
+      .option('--json', 'Return responses in JSON format (for programmatic use)')
+      .action(async options => {
+        await startServer(options.json);
       });
 
     // Add command to register a new server
@@ -109,7 +112,7 @@ export class MCPCliApp {
 
     // Add command to get README for a server
     this.program
-      .command('readme <n>')
+      .command('readme <name>')
       .description('Get the README content for an MCP server')
       .action(async (name: string) => {
         const result = await handleGetServerReadme({ serverName: name });
@@ -117,16 +120,35 @@ export class MCPCliApp {
         if (result.success) {
           console.log(`README for ${name}:`);
           console.log();
-          console.log(result.readmeContent || 'No README content available.');
+          console.log(result.data || 'No README content available.');
         } else {
           console.error(result.message || 'Failed to fetch README.');
         }
         process.exit(0);
       });
 
+    // Add command to configure a server
+    this.program
+      .command('configure-server <name>')
+      .description('Get configuration help for an MCP server')
+      .action(async (name: string) => {
+        const result = await handleConfigureServer({ serverName: name });
+
+        if (result.success) {
+          console.log(`Configuration for ${name}:`);
+          console.log();
+          for (const msg of result.message) {
+            console.log(msg);
+          }
+        } else {
+          console.error(result.message || 'Failed to get configuration help.');
+        }
+        process.exit(0);
+      });
+
     // Add command to remove a server
     this.program
-      .command('remove <n>')
+      .command('remove <name>')
       .description('Remove a registered MCP server')
       .action(async (name: string) => {
         const result = await handleRemoveServer({ serverName: name });
@@ -139,12 +161,25 @@ export class MCPCliApp {
         process.exit(0);
       });
 
-    // Add a command to automatically detect and install servers
-    // this.program
-    //   .command("auto <request>")
-    //   .description("Automatically detect and install needed MCP servers based on user request")
-    //   .option("-s, --settings <path>", "Custom path to mcp-registry.json file")
-    //   .action(async (request: string, options) => {
+    // Add command to parse JSON config
+    this.program
+      .command('parse-config <config>')
+      .description('Parse and save JSON configuration for MCP servers')
+      .option('--json', 'Return result as JSON without modifying config files')
+      .action(async (config: string, options) => {
+        const result = await handleParseConfig({ config }, options.json);
+
+        if (result.success) {
+          if (options.json) {
+            console.log(JSON.stringify(result, null, 2));
+          } else {
+            console.log(`✅ ${result.message}`);
+          }
+        } else {
+          console.error(`❌ ${result.message}`);
+        }
+        process.exit(0);
+      });
 
     // Add a command to save user command to config
     this.program
@@ -160,20 +195,33 @@ export class MCPCliApp {
         },
         {},
       )
+      .option('--json', 'Return result as JSON without modifying config files')
+      .option('--description <text>', 'A description of what this MCP service does')
       .action(
         async (
           serverName: string,
           command: string,
           args: string[],
-          options: { env: Record<string, string> },
+          options: { env: Record<string, string>; json?: boolean; description?: string },
         ) => {
           console.log(
             `Saving command to external config file: ${serverName} ${command} ${args.join(' ')}`,
           );
-          const result = await saveCommandToExternalConfig(serverName, command, args, options.env);
+          const result = await saveCommandToExternalConfig(
+            serverName,
+            command,
+            args,
+            options.description || '',
+            options.json,
+            options.env,
+          );
 
           if (result.success) {
-            console.log(`✅ ${result.message}`);
+            if (options.json) {
+              console.log(JSON.stringify(result, null, 2));
+            } else {
+              console.log(`✅ ${result.message}`);
+            }
           } else {
             console.error(`❌ ${result.message}`);
           }

@@ -2,7 +2,7 @@
 
 import { MCPCliApp } from './cli.js';
 import { startServer } from './server.js';
-import { checkMCPSettings } from './utils.js';
+import { checkMCPSettings } from './utils/utils.js';
 
 /**
  * Main entry point for the MCP Auto Install application
@@ -12,7 +12,9 @@ async function main() {
   if (process.argv[2] === 'connect') {
     try {
       checkMCPSettings(true);
-      await startServer();
+      // Check if --json flag is set
+      const jsonOnly = process.argv.includes('--json');
+      await startServer(jsonOnly);
     } catch (error) {
       console.error('Failed to start server:', error);
       process.exit(1);
