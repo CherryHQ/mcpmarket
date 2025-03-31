@@ -146,6 +146,7 @@ The tool uses two configuration files:
 
 ## 📝 Version History
 
+- v0.1.5: Fixed dependencies in package.json
 - v0.1.1: Added JSON configuration support and improved command management
 - v0.1.0: Added support for custom server sources and command configuration
 - v0.0.4: Added direct MCP connection support with npx
@@ -177,8 +178,6 @@ The tool uses two configuration files:
 - An MCP-compatible client (e.g., Claude)
 
 ## 🤝 Contributing
-
-Please see our [Contributing Guide](../../CONTRIBUTING.md) for details about:
 
 - Development workflow
 - Creating new packages
