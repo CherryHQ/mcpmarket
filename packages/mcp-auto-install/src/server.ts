@@ -246,7 +246,7 @@ const createServer = (jsonOnly = false) => {
           ),
         },
         {
-          name: 'mcp_auto_install_saveNpxCommand',
+          name: 'mcp_auto_install_saveCommand',
           description:
             'Save an npx command configuration for an MCP server. This stores the command, arguments and environment variables in both the MCP settings and LLM configuration files. Use this to persist server-specific command configurations.',
           inputSchema: simpleZodToJsonSchema(
@@ -278,20 +278,20 @@ const createServer = (jsonOnly = false) => {
             }),
           ),
         },
-        {
-          name: 'mcp_auto_install_parseJsonConfig',
-          description:
-            'Parse and validate a JSON configuration string for MCP servers. This tool processes server configurations, validates their format, and merges them with existing configurations. Use this for bulk server configuration.',
-          inputSchema: simpleZodToJsonSchema(
-            z.object({
-              config: z
-                .string()
-                .describe(
-                  "JSON string containing server configurations in the format: { 'mcpServers': { 'serverName': { 'command': 'string', 'args': ['string'] } } }",
-                ),
-            }),
-          ),
-        },
+        // {
+        //   name: 'mcp_auto_install_parseJsonConfig',
+        //   description:
+        //     'Parse and validate a JSON configuration string for MCP servers. This tool processes server configurations, validates their format, and merges them with existing configurations. Use this for bulk server configuration.',
+        //   inputSchema: simpleZodToJsonSchema(
+        //     z.object({
+        //       config: z
+        //         .string()
+        //         .describe(
+        //           "JSON string containing server configurations in the format: { 'mcpServers': { 'serverName': { 'command': 'string', 'args': ['string'] } } }",
+        //         ),
+        //     }),
+        //   ),
+        // },
       ],
     };
   });
@@ -334,7 +334,7 @@ const createServer = (jsonOnly = false) => {
         return createServerResponse(result, false);
       }
 
-      case 'mcp_auto_install_saveNpxCommand': {
+      case 'mcp_auto_install_saveCommand': {
         const result = await saveCommandToExternalConfig(
           args.serverName as string,
           args.command as string,
@@ -346,10 +346,10 @@ const createServer = (jsonOnly = false) => {
         return createServerResponse(result, jsonOnly);
       }
 
-      case 'mcp_auto_install_parseJsonConfig': {
-        const result = await handleParseConfig(args as unknown as { config: string }, jsonOnly);
-        return createServerResponse(result, jsonOnly);
-      }
+      // case 'mcp_auto_install_parseJsonConfig': {
+      //   const result = await handleParseConfig(args as unknown as { config: string }, jsonOnly);
+      //   return createServerResponse(result, jsonOnly);
+      // }
 
       default:
         throw new Error(`Unknown tool: ${name}`);
