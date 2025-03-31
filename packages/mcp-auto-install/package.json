@@ -1,6 +1,6 @@
 {
   "name": "@mcpmarket/mcp-auto-install",
-  "version": "0.1.1",
+  "version": "0.1.4",
   "description": "MCP server that helps install other MCP servers automatically",
   "type": "module",
   "main": "./dist/index.js",
@@ -39,7 +39,8 @@
     "commander": "^11.1.0",
     "node-fetch": "^3.3.2",
     "npx-scope-finder": "^1.3.0",
-    "zod": "^3.22.4"
+    "zod": "^3.22.4",
+    "@modelcontextprotocol/sdk": "^1.8.0"
   },
   "engines": {
     "node": ">=18.0.0"

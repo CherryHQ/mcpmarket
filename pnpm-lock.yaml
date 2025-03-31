@@ -83,6 +83,9 @@ importers:
 
   packages/mcp-auto-install:
     dependencies:
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.8.0
+        version: 1.8.0
       commander:
         specifier: ^11.1.0
         version: 11.1.0
