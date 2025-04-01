@@ -144,8 +144,28 @@ The tool uses two configuration files:
   export MCP_REGISTRY_PATH="/path/to/custom/mcp-registry.json"
   ```
 
+### MCP_PACKAGE_SCOPES
+
+Specify one or more package scopes to search for MCP servers. Multiple scopes can be specified using comma separation.
+
+Default value: `@modelcontextprotocol`
+
+Examples:
+
+```bash
+# Single scope
+MCP_PACKAGE_SCOPES=@modelcontextprotocol
+
+# Multiple scopes
+MCP_PACKAGE_SCOPES=@modelcontextprotocol,@other-scope
+
+# Multiple scopes with spaces
+MCP_PACKAGE_SCOPES=@modelcontextprotocol, @other-scope
+```
+
 ## 📝 Version History
 
+- v0.1.6: Added support for multiple package scopes via `MCP_PACKAGE_SCOPES` environment variable
 - v0.1.5: Fixed dependencies in package.json
 - v0.1.1: Added JSON configuration support and improved command management
 - v0.1.0: Added support for custom server sources and command configuration
