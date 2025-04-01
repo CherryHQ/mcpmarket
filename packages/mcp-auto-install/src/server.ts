@@ -9,7 +9,7 @@ import { promisify } from 'node:util';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { npxFinder } from 'npx-scope-finder';
+import { npxFinder, type NPMPackage } from 'npx-scope-finder';
 import { z } from 'zod';
 
 import type { MCPServerInfo, OperationResult } from './types.js';
@@ -20,6 +20,24 @@ import {
 } from './utils/response.js';
 
 const exec = promisify(execCb);
+
+// Set path
+const SETTINGS_PATH = process.env.MCP_REGISTRY_PATH
+  ? process.env.MCP_REGISTRY_PATH
+  : path.join(homedir(), 'mcp', 'mcp-registry.json');
+
+// Default package scopes
+const DEFAULT_PACKAGE_SCOPES = ['@modelcontextprotocol'];
+
+// Parse package scopes from environment variable
+const PACKAGE_SCOPES = process.env.MCP_PACKAGE_SCOPES
+  ? process.env.MCP_PACKAGE_SCOPES.split(',')
+      .map(scope => scope.trim())
+      .filter(Boolean)
+  : DEFAULT_PACKAGE_SCOPES;
+
+// Server settings
+let serverSettings: { servers: MCPServerInfo[] } = { servers: [] };
 
 /**
  * Simple Zod to JSON Schema conversion function
@@ -72,28 +90,33 @@ function simpleZodToJsonSchema(schema: z.ZodType<unknown>): Record<string, unkno
   return { type: 'object' };
 }
 
-// Set path
-const SETTINGS_PATH = process.env.MCP_REGISTRY_PATH
-  ? process.env.MCP_REGISTRY_PATH
-  : path.join(homedir(), 'mcp', 'mcp-registry.json');
-
-// Server settings
-let serverSettings: { servers: MCPServerInfo[] } = { servers: [] };
-
 /**
  * Preload MCP package information to local registry file
  */
 async function preloadMCPPackages(): Promise<void> {
   try {
-    // Get all available packages from @modelcontextprotocol domain
-    const packages = await npxFinder('@modelcontextprotocol', {
-      timeout: 15000,
-      retries: 3,
-      retryDelay: 1000,
-    });
+    // Get all available packages from configured scopes concurrently
+    const scopePromises = PACKAGE_SCOPES.map(scope =>
+      npxFinder(scope, {
+        timeout: 15000,
+        retries: 3,
+        retryDelay: 1000,
+      }).catch(error => {
+        console.error(`Error fetching packages for scope ${scope}:`, error);
+        return [] as NPMPackage[]; // Return empty array on error to continue processing
+      }),
+    );
+
+    const results = await Promise.allSettled(scopePromises);
+    const allPackages = results.reduce((acc, result) => {
+      if (result.status === 'fulfilled') {
+        acc.push(...result.value);
+      }
+      return acc;
+    }, [] as NPMPackage[]);
 
     // Filter and process package information
-    for (const pkg of packages) {
+    for (const pkg of allPackages) {
       if (!pkg.name || pkg.name === '@modelcontextprotocol/sdk') {
         continue; // Skip SDK itself
       }

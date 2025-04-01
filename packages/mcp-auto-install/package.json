@@ -1,6 +1,6 @@
 {
   "name": "@mcpmarket/mcp-auto-install",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "MCP server that helps install other MCP servers automatically",
   "type": "module",
   "main": "./dist/index.js",
