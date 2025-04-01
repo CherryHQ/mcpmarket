@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
-import { MCPCliApp } from './cli.js';
-import { startServer } from './server.js';
-import { checkMCPSettings } from './utils/utils.js';
+import { MCPCliApp } from './cli';
+import { startServer } from './server';
+import { checkMCPSettings } from './utils/utils';
 
 /**
  * Main entry point for the MCP Auto Install application

@@ -10,7 +10,9 @@ build({
   outbase: 'src', // 保持源文件目录结构
   logLevel: 'info', // 显示编译信息
   outExtension: { '.js': '.js' },
-  outdir: 'dist/lib',
+  resolveExtensions: ['.ts', '.js'],
+  outdir: 'dist',
+  external: ['node:fs', 'node:os', 'node:path', 'node:child_process', 'node:util'], // 排除 Node.js 内置模块
 })
   .then(() => console.log('Build succeeded'))
   .catch(error => {

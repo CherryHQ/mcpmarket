@@ -12,8 +12,8 @@ import {
   handleConfigureServer,
   handleParseConfig,
   saveCommandToExternalConfig,
-} from './server.js';
-import { checkMCPSettings } from './utils/utils.js';
+} from './server';
+import { checkMCPSettings } from './utils/utils';
 /**
  * Command line interface for controlling MCP automatic installation servers
  */
@@ -29,7 +29,7 @@ export class MCPCliApp {
     this.program
       .name('mcp-auto-install')
       .description('A tool for managing MCP server sources and installing MCP servers from GitHub')
-      .version('0.1.7');
+      .version('0.1.8');
 
     // Add default command to start the server
     this.program

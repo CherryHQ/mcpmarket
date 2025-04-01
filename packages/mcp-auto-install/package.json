@@ -1,13 +1,10 @@
 {
   "name": "@mcpmarket/mcp-auto-install",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "MCP server that helps install other MCP servers automatically",
   "type": "module",
   "main": "./dist/index.js",
-  "bin": {
-    "mcp-auto-install": "./dist/index.js",
-    "mcp-auto-install-lib": "./dist/lib/index.js"
-  },
+  "bin": "./dist/index.js",
   "exports": {
     ".": "./dist/index.js"
   },
@@ -20,7 +17,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc && node build.js",
+    "build": "tsc --noEmit && node build.js",
     "start": "node dist/index.js",
     "dev": "ts-node --esm src/index.ts",
     "test": "echo \"Error: no test specified\" && exit 1",

@@ -1,4 +1,4 @@
-import type { OperationResult } from '../types.js';
+import type { OperationResult } from '../types';
 
 /**
  * Utility function to create error response

@@ -12,12 +12,8 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprot
 import { npxFinder, type NPMPackage } from 'npx-scope-finder';
 import { z } from 'zod';
 
-import type { MCPServerInfo, OperationResult } from './types.js';
-import {
-  createErrorResponse,
-  createSuccessResponse,
-  createServerResponse,
-} from './utils/response.js';
+import type { MCPServerInfo, OperationResult } from './types';
+import { createErrorResponse, createSuccessResponse, createServerResponse } from './utils/response';
 
 const exec = promisify(execCb);
 
@@ -223,7 +219,7 @@ const createServer = (jsonOnly = false) => {
   const server = new Server(
     {
       name: 'mcp-auto-install',
-      version: '0.1.7',
+      version: '0.1.8',
     },
     {
       capabilities: {

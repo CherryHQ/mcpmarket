@@ -179,7 +179,7 @@ MCP_PACKAGE_SCOPES=@modelcontextprotocol, @other-scope
 
 ## 📝 Version History
 
-- v0.1.7: Added esbuild for dependency bundling, build output located in lib directory
+- v0.1.8: Added esbuild for dependency bundling
 - v0.1.6: Added support for multiple package scopes via `MCP_PACKAGE_SCOPES` environment variable
 - v0.1.5: Fixed dependencies in package.json
 - v0.1.1: Added JSON configuration support and improved command management
