@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
-import { MCPCliApp } from './cli';
-import { startServer } from './server';
-import { checkMCPSettings } from './utils/utils';
+import { MCPCliApp } from './cli.js';
+import { startServer } from './server.js';
+import { checkMCPSettings } from './utils/utils.js';
 
 /**
  * Main entry point for the MCP Auto Install application
@@ -22,7 +22,6 @@ async function main() {
     return;
   }
 
-  // Otherwise, run in CLI mode
   try {
     const cliApp = new MCPCliApp();
     cliApp.run();

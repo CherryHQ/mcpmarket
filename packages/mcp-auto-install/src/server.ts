@@ -12,8 +12,12 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprot
 import { npxFinder, type NPMPackage } from 'npx-scope-finder';
 import { z } from 'zod';
 
-import type { MCPServerInfo, OperationResult } from './types';
-import { createErrorResponse, createSuccessResponse, createServerResponse } from './utils/response';
+import type { MCPServerInfo, OperationResult } from './types.js';
+import {
+  createErrorResponse,
+  createSuccessResponse,
+  createServerResponse,
+} from './utils/response.js';
 
 const exec = promisify(execCb);
 

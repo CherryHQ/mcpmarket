@@ -94,15 +94,17 @@ mcp-auto-install install my-server
 ### Managing Commands
 
 ```bash
-# Save a command for a server
-mcp-auto-install save-command my-server npx @modelcontextprotocol/server-name --port 3000 --env NODE_ENV=production
+# Save a command for a server (Using the new --params option)
+mcp-auto-install save-command my-server "npx @modelcontextprotocol/server-name" --params --port 3000 --env NODE_ENV=production
 
 # Save command with description
-mcp-auto-install save-command my-server npx @modelcontextprotocol/server-name --port 3000 --description "A server that handles file operations"
+mcp-auto-install save-command my-server "npx @modelcontextprotocol/server-name" --params --port 3000 --description "A server that handles file operations"
 
 # Save command with JSON output
-mcp-auto-install save-command my-server npx @modelcontextprotocol/server-name --port 3000 --json
+mcp-auto-install save-command my-server "npx @modelcontextprotocol/server-name" --params --port 3000 --json
 ```
+
+**Note**: In v0.1.9 and above, use the `--params` option to specify arguments for the command being saved. This ensures clear separation between CLI options and the command parameters.
 
 ### Viewing Documentation
 
@@ -179,6 +181,7 @@ MCP_PACKAGE_SCOPES=@modelcontextprotocol, @other-scope
 
 ## 📝 Version History
 
+- v0.1.9: Added `--params` option to explicitly specify command arguments
 - v0.1.8: Added esbuild for dependency bundling
 - v0.1.6: Added support for multiple package scopes via `MCP_PACKAGE_SCOPES` environment variable
 - v0.1.5: Fixed dependencies in package.json
