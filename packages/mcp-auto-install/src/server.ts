@@ -223,7 +223,7 @@ const createServer = (jsonOnly = false) => {
   const server = new Server(
     {
       name: 'mcp-auto-install',
-      version: '0.1.5',
+      version: '0.1.7',
     },
     {
       capabilities: {

@@ -29,7 +29,7 @@ export class MCPCliApp {
     this.program
       .name('mcp-auto-install')
       .description('A tool for managing MCP server sources and installing MCP servers from GitHub')
-      .version('0.1.5');
+      .version('0.1.7');
 
     // Add default command to start the server
     this.program

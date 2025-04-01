@@ -35,6 +35,20 @@ You can install this package in two ways:
    npx @mcpmarket/mcp-auto-install [command] [options]
    ```
 
+### Build Output Structure
+
+```
+dist/
+├── index.js           # Main entry point
+├── cli.js            # CLI implementation
+├── server.js         # Server implementation
+├── types.js          # TypeScript type definitions
+├── utils/            # Utility functions
+│   ├── response.js   # Response handling utilities
+│   └── utils.js      # General utilities
+└── lib/              # Bundled dependencies from esbuild, containing all external dependencies
+```
+
 ## 🚀 Usage
 
 ### Starting the Server
@@ -165,6 +179,7 @@ MCP_PACKAGE_SCOPES=@modelcontextprotocol, @other-scope
 
 ## 📝 Version History
 
+- v0.1.7: Added esbuild for dependency bundling, build output located in lib directory
 - v0.1.6: Added support for multiple package scopes via `MCP_PACKAGE_SCOPES` environment variable
 - v0.1.5: Fixed dependencies in package.json
 - v0.1.1: Added JSON configuration support and improved command management
