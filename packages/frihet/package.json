@@ -1,0 +1,50 @@
+{
+  "name": "@mcpmarket/frihet",
+  "version": "0.0.1",
+  "description": "AI-native MCP server for business management — invoices, expenses, clients, products, quotes & tax compliance. 31 tools.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "bin": "./dist/index.js",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node --esm src/index.ts",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "modelcontextprotocol",
+    "server",
+    "frihet",
+    "invoicing",
+    "expenses",
+    "business-management",
+    "erp",
+    "ai",
+    "llm",
+    "claude",
+    "tax-compliance",
+    "accounting",
+    "fintech"
+  ],
+  "author": "BRTHLS <viktor@brthls.com>",
+  "license": "MIT",
+  "dependencies": {
+    "@frihet/mcp-server": "^1.2.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
