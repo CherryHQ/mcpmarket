@@ -1,7 +1,7 @@
 import type { OperationResult } from '../types.js';
 
 /**
- * Utility function to create error response
+ * Create an error result.
  */
 export function createErrorResponse(message: string): OperationResult {
   return {
@@ -11,7 +11,7 @@ export function createErrorResponse(message: string): OperationResult {
 }
 
 /**
- * Utility function to create success response
+ * Create a success result.
  */
 export function createSuccessResponse(message: string | string[], data?: unknown): OperationResult {
   return {
@@ -22,37 +22,17 @@ export function createSuccessResponse(message: string | string[], data?: unknown
 }
 
 /**
- * Utility function to create content items for MCP server response
+ * Convert an OperationResult into MCP tool response format.
  */
-export function createContentItems(result: OperationResult): Array<{ type: string; text: string }> {
-  const items = result.message.map(text => ({ type: 'text', text }));
+export function toToolResponse(result: OperationResult) {
+  const content = result.message.map(text => ({ type: 'text' as const, text }));
 
   if (result.data) {
-    items.push({
-      type: 'text',
-      text: typeof result.data === 'string' ? result.data : JSON.stringify(result.data),
+    content.push({
+      type: 'text' as const,
+      text: typeof result.data === 'string' ? result.data : JSON.stringify(result.data, null, 2),
     });
   }
 
-  return items;
-}
-
-/**
- * Utility function to create MCP server response
- */
-export function createServerResponse(result: OperationResult, jsonOnly: boolean) {
-  const response: {
-    content: Array<{ type: string; text: string }>;
-    data?: unknown;
-    success: boolean;
-  } = {
-    content: createContentItems(result),
-    success: result.success,
-  };
-
-  if (jsonOnly && result.data) {
-    response.data = result.data;
-  }
-
-  return response;
+  return { content, isError: !result.success };
 }

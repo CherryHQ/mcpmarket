@@ -1,716 +1,590 @@
 #!/usr/bin/env node
 
-import { promises as fs } from 'node:fs';
-import { homedir } from 'node:os';
-import path from 'node:path';
-import { exec as execCb } from 'node:child_process';
-import { promisify } from 'node:util';
+import { createRequire } from 'node:module';
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { npxFinder, type NPMPackage } from 'npx-scope-finder';
 import { z } from 'zod';
 
-import type { MCPServerInfo, OperationResult } from './types.js';
+import type { RegistryServerEntry } from './types.js';
+import * as registry from './registry.js';
+import { writeServerConfig, removeServerConfig } from './clients.js';
 import {
-  createErrorResponse,
-  createSuccessResponse,
-  createServerResponse,
-} from './utils/response.js';
+  pickBestPackage,
+  resolveCommand,
+  resolveArgs,
+  buildInstallCommand,
+  fetchReadme,
+} from './helpers.js';
+import { toToolResponse } from './utils/response.js';
 
-const exec = promisify(execCb);
+// ---------------------------------------------------------------------------
+// Version (read from package.json at runtime)
+// ---------------------------------------------------------------------------
 
-// Set path
-const SETTINGS_PATH = process.env.MCP_REGISTRY_PATH
-  ? process.env.MCP_REGISTRY_PATH
-  : path.join(homedir(), 'mcp', 'mcp-registry.json');
+const require = createRequire(import.meta.url);
+const { version: PKG_VERSION } = require('../package.json') as { version: string };
 
-// Default package scopes
+// ---------------------------------------------------------------------------
+// npm scope fallback (used when Registry API is unavailable)
+// ---------------------------------------------------------------------------
+
 const DEFAULT_PACKAGE_SCOPES = ['@modelcontextprotocol'];
-
-// Parse package scopes from environment variable
 const PACKAGE_SCOPES = process.env.MCP_PACKAGE_SCOPES
   ? process.env.MCP_PACKAGE_SCOPES.split(',')
-      .map(scope => scope.trim())
+      .map(s => s.trim())
       .filter(Boolean)
   : DEFAULT_PACKAGE_SCOPES;
 
-// Server settings
-let serverSettings: { servers: MCPServerInfo[] } = { servers: [] };
+async function fallbackNpmSearch(query: string, limit = 20): Promise<RegistryServerEntry[]> {
+  try {
+    const { npxFinder } = await import('npx-scope-finder');
+    const results: RegistryServerEntry[] = [];
 
-/**
- * Simple Zod to JSON Schema conversion function
- */
-function simpleZodToJsonSchema(schema: z.ZodType<unknown>): Record<string, unknown> {
-  // For simplicity, we only handle basic types
-  if (schema instanceof z.ZodString) {
-    return { type: 'string' };
+    for (const scope of PACKAGE_SCOPES) {
+      try {
+        const packages = await npxFinder(scope, {
+          timeout: 15_000,
+          retries: 2,
+          retryDelay: 1000,
+        });
+
+        for (const pkg of packages) {
+          if (!pkg.name || pkg.name === '@modelcontextprotocol/sdk') continue;
+          if (
+            query &&
+            !pkg.name.toLowerCase().includes(query.toLowerCase()) &&
+            !(pkg.description || '').toLowerCase().includes(query.toLowerCase())
+          ) {
+            continue;
+          }
+
+          results.push({
+            server: {
+              name: pkg.name,
+              description: pkg.description || '',
+              version: pkg.version || '0.0.0',
+              repository: pkg.links?.repository
+                ? { url: pkg.links.repository, source: 'npm' }
+                : undefined,
+              packages: [
+                {
+                  registryType: 'npm',
+                  identifier: pkg.name,
+                  transport: { type: 'stdio' },
+                },
+              ],
+            },
+            _meta: {
+              'io.modelcontextprotocol.registry/official': {
+                status: 'active',
+                publishedAt: '',
+                updatedAt: '',
+                isLatest: true,
+              },
+            },
+          });
+        }
+      } catch {
+        // Individual scope failure — continue with others
+      }
+    }
+
+    const limited = results.slice(0, limit);
+
+    // Cache fallback results so subsequent mai_install/mai_details/mai_readme
+    // can resolve them via getServer() without hitting the (down) Registry.
+    if (limited.length > 0) {
+      try {
+        await registry.putManyInCache(limited);
+      } catch {
+        // Cache write failure shouldn't break the search
+      }
+    }
+
+    return limited;
+  } catch {
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tool: mai_search
+// ---------------------------------------------------------------------------
+
+const SearchInputSchema = z.object({
+  query: z.string().describe('Search keyword (e.g. "filesystem", "git", "database")'),
+  limit: z.number().optional().describe('Max results to return (default 20, max 100)'),
+});
+
+async function handleSearch(args: z.infer<typeof SearchInputSchema>) {
+  const { query, limit } = args;
+
+  let entries: RegistryServerEntry[];
+  let source = 'registry';
+
+  try {
+    const result = await registry.searchServers(query, limit || 20);
+    entries = result.servers;
+  } catch {
+    source = 'npm-fallback';
+    entries = await fallbackNpmSearch(query, limit || 20);
   }
 
-  if (schema instanceof z.ZodNumber) {
-    return { type: 'number' };
+  if (entries.length === 0) {
+    return toToolResponse({
+      success: true,
+      message: [`No servers found for "${query}" (source: ${source}).`],
+    });
   }
 
-  if (schema instanceof z.ZodBoolean) {
-    return { type: 'boolean' };
+  const lines = entries.map(e => {
+    const s = e.server;
+    const types = (s.packages || []).map(p => p.registryType).join(', ');
+    const remote = s.remotes?.length ? ' | remote' : '';
+    return `- ${s.name} (v${s.version}) — ${s.description}${types ? ` [${types}${remote}]` : ''}`;
+  });
+
+  return toToolResponse({
+    success: true,
+    message: [`Found ${entries.length} server(s) for "${query}" (source: ${source}):`, ...lines],
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Tool: mai_details
+// ---------------------------------------------------------------------------
+
+const DetailsInputSchema = z.object({
+  serverName: z
+    .string()
+    .describe('Full server name from the registry (e.g. "io.github.user/repo")'),
+});
+
+async function handleDetails(args: z.infer<typeof DetailsInputSchema>) {
+  let entry: RegistryServerEntry | null;
+  try {
+    entry = await registry.getServer(args.serverName);
+  } catch (error) {
+    return toToolResponse({
+      success: false,
+      message: [`Failed to fetch server "${args.serverName}": ${(error as Error).message}`],
+    });
   }
+
+  if (!entry) {
+    return toToolResponse({
+      success: false,
+      message: [`Server "${args.serverName}" not found in the registry.`],
+    });
+  }
+
+  const s = entry.server;
+  const sections: string[] = [`# ${s.title || s.name}`, `Version: ${s.version}`, s.description];
+
+  if (s.repository) {
+    sections.push(`Repository: ${s.repository.url}`);
+  }
+  if (s.websiteUrl) {
+    sections.push(`Website: ${s.websiteUrl}`);
+  }
+
+  // Packages
+  if (s.packages?.length) {
+    sections.push('\n## Packages');
+    for (const pkg of s.packages) {
+      const cmd = buildInstallCommand(pkg);
+      sections.push(`- [${pkg.registryType}] ${pkg.identifier}${cmd ? `\n  Install: ${cmd}` : ''}`);
+
+      if (pkg.environmentVariables?.length) {
+        sections.push('  Environment variables:');
+        for (const ev of pkg.environmentVariables) {
+          const req = ev.isRequired ? ' (required)' : '';
+          const def = ev.default ? ` [default: ${ev.default}]` : '';
+          const secret = ev.isSecret ? ' (secret)' : '';
+          sections.push(`    ${ev.name}: ${ev.description}${req}${def}${secret}`);
+        }
+      }
+
+      if (pkg.packageArguments?.length) {
+        sections.push('  Arguments:');
+        for (const arg of pkg.packageArguments) {
+          const req = arg.isRequired ? ' (required)' : '';
+          const def = arg.default ? ` [default: ${arg.default}]` : '';
+          sections.push(`    ${arg.name}: ${arg.description}${req}${def}`);
+        }
+      }
+    }
+  }
+
+  // Remotes
+  if (s.remotes?.length) {
+    sections.push('\n## Remote connections');
+    for (const r of s.remotes) {
+      sections.push(`- ${r.type}: ${r.url}`);
+    }
+  }
+
+  // Hint for LLM to use mai_readme for more details
+  if (s.repository?.url) {
+    sections.push(
+      '\n---',
+      'Tip: Use mai_readme to get the full documentation, including available tools, usage examples, and configuration guides.',
+    );
+  }
+
+  return toToolResponse({
+    success: true,
+    message: sections,
+    data: entry,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Tool: mai_install
+// ---------------------------------------------------------------------------
+
+const InstallInputSchema = z.object({
+  serverName: z
+    .string()
+    .describe('Full server name from the registry (e.g. "io.github.user/repo")'),
+  env: z
+    .record(z.string())
+    .optional()
+    .describe('Environment variables to set (e.g. { "API_KEY": "xxx" })'),
+  dryRun: z
+    .boolean()
+    .optional()
+    .describe(
+      'If true, return the config without writing to any files. Useful for clients that manage their own config storage (e.g. CherryStudio).',
+    ),
+});
+
+async function handleInstall(args: z.infer<typeof InstallInputSchema>) {
+  let entry: RegistryServerEntry | null;
+  try {
+    entry = await registry.getServer(args.serverName);
+  } catch (error) {
+    return toToolResponse({
+      success: false,
+      message: [`Failed to fetch server "${args.serverName}": ${(error as Error).message}`],
+    });
+  }
+
+  if (!entry) {
+    return toToolResponse({
+      success: false,
+      message: [`Server "${args.serverName}" not found in the registry.`],
+    });
+  }
+
+  const s = entry.server;
+
+  // Pick the best package (prefer npm stdio)
+  const pkg = pickBestPackage(s.packages || []);
+  if (!pkg) {
+    // Check for remote-only servers
+    if (s.remotes?.length) {
+      return toToolResponse({
+        success: false,
+        message: [
+          `"${s.name}" is a remote-only server (no local package).`,
+          `Connect via: ${s.remotes[0].type} at ${s.remotes[0].url}`,
+          'Remote server configuration is not yet supported by auto-install.',
+        ],
+      });
+    }
+
+    return toToolResponse({
+      success: false,
+      message: [`No installable package found for "${s.name}".`],
+    });
+  }
+
+  // Build command config
+  const command = resolveCommand(pkg);
+  const cmdArgs = resolveArgs(pkg);
+  const env = args.env || {};
+
+  const configPayload = {
+    command,
+    args: cmdArgs,
+    ...(Object.keys(env).length > 0 && { env }),
+  };
+
+  // Dry run: return config data without writing
+  if (args.dryRun) {
+    const requiredEnvVars = (pkg.environmentVariables || []).filter(
+      ev => ev.isRequired && !env[ev.name],
+    );
+
+    return toToolResponse({
+      success: true,
+      message: [`Config for "${s.name}" (dry run):`],
+      data: {
+        serverName: args.serverName,
+        config: configPayload,
+        registryType: pkg.registryType,
+        transport: pkg.transport,
+        requiredEnvVars: requiredEnvVars.map(ev => ({
+          name: ev.name,
+          description: ev.description,
+          isSecret: ev.isSecret || false,
+        })),
+      },
+    });
+  }
+
+  // Write to client configs
+  const written = await writeServerConfig(args.serverName, configPayload);
+
+  if (written.length === 0) {
+    return toToolResponse({
+      success: false,
+      message: [
+        `Failed to write config. No LLM client config files found.`,
+        'Set MCP_SETTINGS_PATH or install a supported client (Claude Desktop, Cursor, Windsurf).',
+      ],
+    });
+  }
+
+  // Report required env vars the user still needs to set
+  const requiredEnvVars = (pkg.environmentVariables || []).filter(
+    ev => ev.isRequired && !env[ev.name],
+  );
+
+  const messages = [
+    `Installed "${s.name}" to: ${written.join(', ')}`,
+    `Command: ${command} ${cmdArgs.join(' ')}`,
+  ];
+
+  if (requiredEnvVars.length > 0) {
+    messages.push(
+      '\nRequired environment variables not yet set:',
+      ...requiredEnvVars.map(ev => `  ${ev.name}: ${ev.description}`),
+      '\nSet these in the server config or re-run with --env.',
+    );
+  }
+
+  return toToolResponse({ success: true, message: messages });
+}
+
+// ---------------------------------------------------------------------------
+// Tool: mai_remove
+// ---------------------------------------------------------------------------
+
+const RemoveInputSchema = z.object({
+  serverName: z.string().describe('Exact name of the server to remove'),
+});
+
+async function handleRemove(args: z.infer<typeof RemoveInputSchema>) {
+  const removed = await removeServerConfig(args.serverName);
+
+  if (removed.length === 0) {
+    return toToolResponse({
+      success: false,
+      message: [`Server "${args.serverName}" not found in any client configs.`],
+    });
+  }
+
+  return toToolResponse({
+    success: true,
+    message: [
+      `Removed "${args.serverName}".`,
+      `Removed from client configs: ${removed.join(', ')}`,
+    ],
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Tool: mai_readme
+// ---------------------------------------------------------------------------
+
+const ReadmeInputSchema = z.object({
+  serverName: z
+    .string()
+    .describe('Full server name from the registry (e.g. "io.github.user/repo")'),
+});
+
+async function handleReadme(args: z.infer<typeof ReadmeInputSchema>) {
+  let entry: RegistryServerEntry | null;
+  try {
+    entry = await registry.getServer(args.serverName);
+  } catch (error) {
+    return toToolResponse({
+      success: false,
+      message: [`Failed to fetch server "${args.serverName}": ${(error as Error).message}`],
+    });
+  }
+
+  if (!entry) {
+    return toToolResponse({
+      success: false,
+      message: [`Server "${args.serverName}" not found in the registry.`],
+    });
+  }
+
+  const repo = entry.server.repository;
+  if (!repo?.url) {
+    return toToolResponse({
+      success: false,
+      message: [`Server "${args.serverName}" has no repository URL.`],
+    });
+  }
+
+  const readme = await fetchReadme(repo.url, repo.subfolder);
+  if (!readme) {
+    return toToolResponse({
+      success: false,
+      message: [
+        `Could not fetch README for "${args.serverName}".`,
+        `Repository: ${repo.url}`,
+        'Only GitHub repositories are supported. The README may not exist or the repository may be private.',
+      ],
+    });
+  }
+
+  return toToolResponse({
+    success: true,
+    message: [
+      `# README: ${entry.server.title || entry.server.name}`,
+      `Repository: ${repo.url}`,
+      '',
+      readme,
+    ],
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Zod schema → JSON Schema (lightweight, for ListTools inputSchema)
+// ---------------------------------------------------------------------------
+
+function zodToInputSchema(schema: z.ZodObject<z.ZodRawShape>): Record<string, unknown> {
+  const properties: Record<string, Record<string, unknown>> = {};
+  const required: string[] = [];
+
+  for (const [key, value] of Object.entries(schema.shape)) {
+    const zodVal = value as z.ZodTypeAny;
+    properties[key] = describeZodType(zodVal);
+
+    if (!zodVal.isOptional()) {
+      required.push(key);
+    }
+  }
+
+  return { type: 'object', properties, required };
+}
+
+function describeZodType(schema: z.ZodTypeAny): Record<string, unknown> {
+  if (schema instanceof z.ZodOptional) {
+    return describeZodType(schema._def.innerType);
+  }
+
+  const desc = schema._def.description;
+  const base: Record<string, unknown> = {};
+  if (desc) base.description = desc;
+
+  if (schema instanceof z.ZodString) return { type: 'string', ...base };
+  if (schema instanceof z.ZodNumber) return { type: 'number', ...base };
+  if (schema instanceof z.ZodBoolean) return { type: 'boolean', ...base };
 
   if (schema instanceof z.ZodArray) {
+    return { type: 'array', items: describeZodType(schema._def.type), ...base };
+  }
+
+  if (schema instanceof z.ZodRecord) {
     return {
-      type: 'array',
-      items: simpleZodToJsonSchema(schema._def.type),
+      type: 'object',
+      additionalProperties: describeZodType(schema._def.valueType),
+      ...base,
     };
   }
 
   if (schema instanceof z.ZodObject) {
-    const properties: Record<string, Record<string, unknown>> = {};
-    const required: string[] = [];
-
-    for (const [key, value] of Object.entries(schema.shape)) {
-      properties[key] = simpleZodToJsonSchema(value as z.ZodType<unknown>);
-
-      if (!(value instanceof z.ZodOptional)) {
-        required.push(key);
-      }
-    }
-
-    return {
-      type: 'object',
-      properties,
-      required,
-    };
+    return { ...zodToInputSchema(schema as z.ZodObject<z.ZodRawShape>), ...base };
   }
 
-  if (schema instanceof z.ZodOptional) {
-    return simpleZodToJsonSchema(schema._def.innerType);
-  }
-
-  // Default return
-  return { type: 'object' };
+  return { type: 'object', ...base };
 }
 
-/**
- * Preload MCP package information to local registry file
- */
-async function preloadMCPPackages(): Promise<void> {
-  try {
-    // Get all available packages from configured scopes concurrently
-    const scopePromises = PACKAGE_SCOPES.map(scope =>
-      npxFinder(scope, {
-        timeout: 15000,
-        retries: 3,
-        retryDelay: 1000,
-      }).catch(error => {
-        console.error(`Error fetching packages for scope ${scope}:`, error);
-        return [] as NPMPackage[]; // Return empty array on error to continue processing
-      }),
-    );
+// ---------------------------------------------------------------------------
+// Server setup
+// ---------------------------------------------------------------------------
 
-    const results = await Promise.allSettled(scopePromises);
-    const allPackages = results.reduce((acc, result) => {
-      if (result.status === 'fulfilled') {
-        acc.push(...result.value);
-      }
-      return acc;
-    }, [] as NPMPackage[]);
-
-    // Filter and process package information
-    for (const pkg of allPackages) {
-      if (!pkg.name || pkg.name === '@modelcontextprotocol/sdk') {
-        continue; // Skip SDK itself
-      }
-
-      try {
-        // Extract server type (from package name)
-        const nameParts = pkg.name.split('/');
-        const serverName = nameParts[nameParts.length - 1];
-        const serverType = serverName.replace('mcp-', '');
-
-        // Build server information
-        const serverInfo: MCPServerInfo = {
-          name: pkg.name,
-          repo: pkg.links?.repository || '',
-          command: `npx ${pkg.name}`,
-          description: pkg.description || `MCP ${serverType} server`,
-          keywords: [...(pkg.keywords || []), serverType, 'mcp'],
-        };
-
-        // Get README content directly from npxFinder returned data and add to serverInfo
-        if (pkg.original?.readme) {
-          serverInfo.readme = pkg.original.readme;
-        }
-
-        // Check if server is already registered
-        const existingServer = serverSettings.servers.find(s => s.name === pkg.name);
-        if (!existingServer) {
-          serverSettings.servers.push(serverInfo);
-        } else {
-          // Update existing server's readme (if available)
-          if (serverInfo.readme && !existingServer.readme) {
-            existingServer.readme = serverInfo.readme;
-          }
-        }
-      } catch (pkgError) {
-        console.error(`Error processing package ${pkg.name}:`, pkgError);
-        // Silently handle package errors
-      }
-    }
-
-    // Save updated settings
-    await saveSettings();
-  } catch (error) {
-    console.error('Error preloading MCP packages:', error);
-    // Silently handle errors
-  }
-}
-
-// Create MCP server instance
-
-/**
- * Initialize settings
- */
-async function initSettings(): Promise<void> {
-  try {
-    // Create settings directory
-    const settingsDir = path.dirname(SETTINGS_PATH);
-    await fs.mkdir(settingsDir, { recursive: true });
-
-    // Try to load existing settings
-    try {
-      const data = await fs.readFile(SETTINGS_PATH, 'utf-8');
-      serverSettings = JSON.parse(data);
-    } catch (error) {
-      console.error(error);
-      // If file doesn't exist, use default settings
-      serverSettings = { servers: [] };
-      // Save default settings
-      await saveSettings();
-    }
-  } catch (error) {
-    console.error('Failed to initialize settings:', error);
-  }
-}
-
-/**
- * Save settings
- */
-async function saveSettings(): Promise<void> {
-  try {
-    // Ensure directory exists
-    const settingsDir = path.dirname(SETTINGS_PATH);
-    await fs.mkdir(settingsDir, { recursive: true });
-
-    // Save settings file
-    await fs.writeFile(SETTINGS_PATH, JSON.stringify(serverSettings, null, 2), 'utf-8');
-  } catch (error) {
-    console.error('Failed to save settings:', error);
-    throw new Error('Failed to save settings');
-  }
-}
-
-/**
- * Find server
- */
-async function findServer(name: string): Promise<MCPServerInfo | undefined> {
-  // Ensure settings are loaded
-  await initSettings();
-  return serverSettings.servers.find(s => s.name.includes(name.toLowerCase()));
-}
-
-const createServer = (jsonOnly = false) => {
-  console.error('jsonOnly', jsonOnly);
+function createServer() {
   const server = new Server(
-    {
-      name: 'mcp-auto-install',
-      version: '0.1.5',
-    },
-    {
-      capabilities: {
-        tools: {},
-      },
-    },
+    { name: 'mcp-auto-install', version: PKG_VERSION },
+    { capabilities: { tools: {} } },
   );
 
-  // Register tools list handler
-  server.setRequestHandler(ListToolsRequestSchema, async () => {
-    return {
-      tools: [
-        {
-          name: 'mcp_auto_install_getAvailableServers',
-          description:
-            'List all available MCP servers that can be installed. Returns a list of server names and their basic information. Use this to discover what MCP servers are available before installing or configuring them.',
-          inputSchema: simpleZodToJsonSchema(
-            z.object({
-              random_string: z.string().describe('Dummy parameter for no-parameter tools'),
-            }),
-          ),
-        },
-        {
-          name: 'mcp_auto_install_removeServer',
-          description:
-            "Remove a registered MCP server from the local registry. This will unregister the server but won't uninstall it. Provide the exact server name to remove. Use getAvailableServers first to see registered servers.",
-          inputSchema: simpleZodToJsonSchema(
-            z.object({
-              serverName: z
-                .string()
-                .describe('The exact name of the server to remove from registry'),
-            }),
-          ),
-        },
-        {
-          name: 'mcp_auto_install_configureServer',
-          description:
-            'Get detailed configuration help for a specific MCP server. Provides README content, configuration instructions, and suggested commands. Optionally specify a purpose or specific configuration question.',
-          inputSchema: simpleZodToJsonSchema(
-            z.object({
-              serverName: z.string().describe('The exact name of the server to configure'),
-            }),
-          ),
-        },
-        {
-          name: 'mcp_auto_install_saveCommand',
-          description:
-            'Save an npx command configuration for an MCP server. This stores the command, arguments and environment variables in both the MCP settings and LLM configuration files. Use this to persist server-specific command configurations.',
-          inputSchema: simpleZodToJsonSchema(
-            z.object({
-              serverName: z
-                .string()
-                .describe('The exact name of the server to save command configuration for'),
-              command: z
-                .string()
-                .describe(
-                  "The main command to execute (e.g., 'npx', 'node', 'npm', 'yarn', 'pnpm','cmd', 'powershell', 'bash', 'sh', 'zsh', 'fish', 'tcsh', 'csh', 'cmd', 'powershell', 'pwsh', 'cmd.exe', 'powershell.exe', 'cmd.ps1', 'powershell.ps1')",
-                ),
-              args: z
-                .array(z.string())
-                .describe(
-                  "Array of command arguments (e.g., ['--port', '3000', '--config', 'config.json'])",
-                ),
-              env: z
-                .record(z.string())
-                .describe(
-                  "Environment variables object for the command (e.g., { 'NODE_ENV': 'production', 'DEBUG': 'true' })",
-                )
-                .optional(),
-              description: z
-                .string()
-                .describe(
-                  'A description of the functionality and purpose of the server to which the command configuration needs to be saved',
-                ),
-            }),
-          ),
-        },
-        // {
-        //   name: 'mcp_auto_install_parseJsonConfig',
-        //   description:
-        //     'Parse and validate a JSON configuration string for MCP servers. This tool processes server configurations, validates their format, and merges them with existing configurations. Use this for bulk server configuration.',
-        //   inputSchema: simpleZodToJsonSchema(
-        //     z.object({
-        //       config: z
-        //         .string()
-        //         .describe(
-        //           "JSON string containing server configurations in the format: { 'mcpServers': { 'serverName': { 'command': 'string', 'args': ['string'] } } }",
-        //         ),
-        //     }),
-        //   ),
-        // },
-      ],
-    };
-  });
+  const tools = [
+    {
+      name: 'mai_search',
+      description:
+        'Search for MCP servers in the official registry. Returns server names, descriptions, versions, and supported package types. Use this to discover available servers before installing.',
+      inputSchema: zodToInputSchema(SearchInputSchema),
+    },
+    {
+      name: 'mai_details',
+      description:
+        'Get detailed information about a specific MCP server from the registry. Returns environment variables, arguments, transport config, and installation commands.',
+      inputSchema: zodToInputSchema(DetailsInputSchema),
+    },
+    {
+      name: 'mai_install',
+      description:
+        'Install an MCP server by writing its configuration to LLM client config files (Claude Desktop, Cursor, Windsurf). Automatically builds the correct npx/uvx/docker command from registry metadata.',
+      inputSchema: zodToInputSchema(InstallInputSchema),
+    },
+    {
+      name: 'mai_remove',
+      description: 'Remove an MCP server from LLM client config files.',
+      inputSchema: zodToInputSchema(RemoveInputSchema),
+    },
+    {
+      name: 'mai_readme',
+      description:
+        'Get the full documentation (README) of an MCP server. Returns available tools, usage examples, configuration guides, and other details not included in mai_details. Use this when you need to understand what a server can do or help the user decide between similar servers.',
+      inputSchema: zodToInputSchema(ReadmeInputSchema),
+    },
+  ];
 
-  // Register tool call handler
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
+
   server.setRequestHandler(CallToolRequestSchema, async req => {
     const { name, arguments: args = {} } = req.params;
 
     switch (name) {
-      case 'mcp_auto_install_getAvailableServers': {
-        const servers = await getRegisteredServers();
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `📋 Found ${servers.length} MCP servers`,
-            },
-            {
-              type: 'text',
-              text: servers
-                .map(s => `• ${s.name}${s.description ? `: ${s.description}` : ''}`)
-                .join('\n'),
-            },
-          ],
-          success: true,
-        };
-      }
-
-      case 'mcp_auto_install_removeServer': {
-        const result = await handleRemoveServer(args as unknown as { serverName: string });
-        return createServerResponse(result, false);
-      }
-
-      case 'mcp_auto_install_configureServer': {
-        const result = await handleConfigureServer(
-          args as unknown as {
-            serverName: string;
-          },
-        );
-        return createServerResponse(result, false);
-      }
-
-      case 'mcp_auto_install_saveCommand': {
-        const result = await saveCommandToExternalConfig(
-          args.serverName as string,
-          args.command as string,
-          args.args as string[],
-          args.description as string,
-          jsonOnly,
-          args.env as Record<string, string>,
-        );
-        return createServerResponse(result, jsonOnly);
-      }
-
-      // case 'mcp_auto_install_parseJsonConfig': {
-      //   const result = await handleParseConfig(args as unknown as { config: string }, jsonOnly);
-      //   return createServerResponse(result, jsonOnly);
-      // }
-
+      case 'mai_search':
+        return handleSearch(SearchInputSchema.parse(args));
+      case 'mai_details':
+        return handleDetails(DetailsInputSchema.parse(args));
+      case 'mai_install':
+        return handleInstall(InstallInputSchema.parse(args));
+      case 'mai_remove':
+        return handleRemove(RemoveInputSchema.parse(args));
+      case 'mai_readme':
+        return handleReadme(ReadmeInputSchema.parse(args));
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
   });
+
   return server;
-};
+}
 
-/**
- * Start MCP server
- */
-export async function startServer(jsonOnly = false): Promise<void> {
-  console.error('Initializing MCP server...');
-  await initSettings();
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
 
-  console.error('Loading MCP packages...');
-  await preloadMCPPackages();
-
-  const server = createServer(jsonOnly);
-
-  console.error('Connecting to transport...');
+export async function startServer(): Promise<void> {
+  console.error('Starting MCP Auto Install server...');
+  const server = createServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error('MCP server started and ready');
+  console.error('MCP Auto Install server ready (v' + PKG_VERSION + ')');
 }
 
-/**
- * Get list of registered servers
- */
-export async function getRegisteredServers(): Promise<MCPServerInfo[]> {
-  // Ensure settings are loaded
-  await initSettings();
-  return serverSettings.servers;
-}
-
-/**
- * The following are interface functions for CLI tools
- */
-
-export async function handleInstallServer(args: { serverName: string }): Promise<OperationResult> {
-  const { serverName } = args;
-  const server = await findServer(serverName);
-
-  if (!server) {
-    return createErrorResponse(
-      `❌ Server '${serverName}' not found. Use 'getAvailableServers' to see options.`,
-    );
-  }
-
-  try {
-    // Install using git clone
-    const repoName = server.repo.split('/').pop()?.replace('.git', '') || serverName;
-    const cloneDir = path.join(homedir(), '.mcp', 'servers', repoName);
-
-    // Create directory
-    await fs.mkdir(path.join(homedir(), '.mcp', 'servers'), {
-      recursive: true,
-    });
-
-    // Clone repository
-    await exec(`git clone ${server.repo} ${cloneDir}`);
-
-    // Install dependencies
-    await exec(`cd ${cloneDir} && npm install`);
-
-    if (server.installCommands && server.installCommands.length > 0) {
-      // Run custom installation commands
-      for (const cmd of server.installCommands) {
-        await exec(`cd ${cloneDir} && ${cmd}`);
-      }
-    }
-
-    return createSuccessResponse(`✅ Installed '${serverName}'. Path: ${cloneDir}`, {
-      installPath: cloneDir,
-      serverName: server.name,
-      description: server.description,
-    });
-  } catch (error) {
-    return createErrorResponse(`⚠️ Install failed: ${(error as Error).message}`);
-  }
-}
-
-export async function handleRegisterServer(serverInfo: MCPServerInfo): Promise<OperationResult> {
-  // Check if server already exists
-  const existingIndex = serverSettings.servers.findIndex(s => s.name === serverInfo.name);
-
-  if (existingIndex !== -1) {
-    // Update existing server
-    serverSettings.servers[existingIndex] = serverInfo;
-  } else {
-    // Add new server
-    serverSettings.servers.push(serverInfo);
-  }
-
-  // Save updated settings
-  await saveSettings();
-
-  const action = existingIndex !== -1 ? 'updated' : 'registered';
-  return createSuccessResponse(`✅ Server '${serverInfo.name}' ${action} successfully.`);
-}
-
-export async function handleRemoveServer(args: { serverName: string }): Promise<OperationResult> {
-  const { serverName } = args;
-  const initialLength = serverSettings.servers.length;
-
-  // Remove specified server
-  serverSettings.servers = serverSettings.servers.filter(s => s.name !== serverName);
-
-  if (serverSettings.servers.length === initialLength) {
-    return createErrorResponse(`❌ Server '${serverName}' not found.`);
-  }
-
-  // Save updated settings
-  await saveSettings();
-
-  return createSuccessResponse(`✅ Server '${serverName}' removed.`);
-}
-
-export async function handleConfigureServer(args: {
-  serverName: string;
-}): Promise<OperationResult> {
-  const { serverName } = args;
-  const server = await findServer(serverName);
-
-  if (!server) {
-    return createErrorResponse(`❌ Server '${serverName}' not found.`);
-  }
-
-  // Get README content
-  const readmeResult = await handleGetServerReadme({ serverName });
-
-  if (!readmeResult.message || !readmeResult.data) {
-    return createErrorResponse(
-      `⚠️ README not available: ${readmeResult.message?.[0] || 'Unknown error'}`,
-    );
-  }
-
-  const messages = [
-    `📝 Config guide for '${serverName}'`,
-    server.description ? `Description: ${server.description}` : '',
-    readmeResult.data as string,
-  ];
-
-  return createSuccessResponse(messages);
-}
-
-/**
- * Get server README content
- */
-export async function handleGetServerReadme(args: {
-  serverName: string;
-}): Promise<OperationResult> {
-  const { serverName } = args;
-  const server = await findServer(serverName);
-
-  if (!server) {
-    return createErrorResponse(`❌ Server '${serverName}' not found in the registry.`);
-  }
-
-  try {
-    // Get README content (directly from server object)
-    const readmeContent = server.readme || 'No README content available for this server.';
-
-    // Add prompts to guide LLM in summarizing content and guiding parameter configuration
-    const promptedReadme = `# ${serverName} README
-${server.description ? `\n> ${server.description}\n` : ''}
-${readmeContent}
-
----
-<CURRENT_CURSOR_POSITION>
-
-Summary: What does this MCP server do? (1-2 sentences)
-
-Setup: List required/optional parameters, env vars needed.
-
-Examples:
-- Working npx command example
-- JSON config example for integration
-
-Next steps: How to get started quickly?
-
-Note any unclear/missing information.
-`;
-
-    return createSuccessResponse('README fetch successful', promptedReadme);
-  } catch (error) {
-    return createErrorResponse(`⚠️ Failed to fetch README: ${(error as Error).message}`);
-  }
-}
-
-/**
- * Handle user configuration parsing
- */
-export async function handleParseConfig(
-  args: { config: string },
-  jsonOnly = false,
-): Promise<OperationResult> {
-  try {
-    // Parse the JSON string sent by the user
-    const userConfig = JSON.parse(args.config);
-
-    // Ensure mcpServers field exists
-    if (!userConfig.mcpServers) {
-      userConfig.mcpServers = {};
-    }
-
-    // Validate each server's configuration format
-    for (const [serverName, serverConfig] of Object.entries(userConfig.mcpServers)) {
-      const config = serverConfig as { command: string; args: string[] };
-
-      // Validate required fields
-      if (!config.command || !Array.isArray(config.args)) {
-        return createErrorResponse(
-          `❌ Invalid config for '${serverName}'. Require 'command' and 'args' fields.`,
-        );
-      }
-    }
-
-    // If jsonOnly is true, just return the parsed config without saving
-    if (jsonOnly) {
-      return createSuccessResponse('✅ Config parsed', userConfig);
-    }
-
-    // Save configuration to external file
-    const externalConfigPath = process.env.MCP_SETTINGS_PATH;
-    if (!externalConfigPath) {
-      return createErrorResponse('❌ MCP_SETTINGS_PATH not set. Set this to save config.');
-    }
-
-    // Read existing configuration (if any)
-    let existingConfig: Record<string, unknown> = {};
-    try {
-      const existingData = await fs.readFile(externalConfigPath, 'utf-8');
-      existingConfig = JSON.parse(existingData);
-    } catch (error) {
-      return createErrorResponse(`⚠️ Parse error: ${(error as Error).message}`);
-    }
-
-    // Merge configurations
-    const mergedConfig = {
-      ...existingConfig,
-      mcpServers: {
-        ...((existingConfig.mcpServers as Record<string, unknown>) || {}),
-        ...userConfig.mcpServers,
-      },
-    };
-
-    // Save merged configuration
-    await fs.writeFile(externalConfigPath, JSON.stringify(mergedConfig, null, 2), 'utf-8');
-
-    return createSuccessResponse('✅ Config saved');
-  } catch (error) {
-    return createErrorResponse(`⚠️ Parse error: ${(error as Error).message}`);
-  }
-}
-
-/**
- * Save command to external configuration file (e.g., Claude's configuration file)
- * @param serverName MCP server name
- * @param command User input command, e.g., "npx @modelcontextprotocol/server-name --arg1 value1 --arg2 value2"
- * @param args Array of command arguments, e.g., ['--port', '3000', '--config', 'config.json']
- * @param env Environment variables object for the command, e.g., { 'NODE_ENV': 'production', 'DEBUG': 'true' }
- * @param jsonOnly If true, only return the command configuration without saving to files
- * @param description Optional description for the command
- * @returns Operation result
- */
-export async function saveCommandToExternalConfig(
-  serverName: string,
-  command: string,
-  args: string[],
-  description: string,
-  jsonOnly = false,
-  env?: Record<string, string>,
-): Promise<OperationResult> {
-  try {
-    if (!command) {
-      return createErrorResponse('❌ Command cannot be empty');
-    }
-
-    // Check if server exists (in our MCP server registry)
-    const server = await findServer(serverName);
-    if (!server) {
-      return createErrorResponse(`❌ Server '${serverName}' not found`);
-    }
-
-    // Create command configuration
-    const commandConfig = {
-      name: server?.name || serverName,
-      command,
-      args,
-      env: env || {},
-      description: description || server.description || '',
-    };
-
-    // If jsonOnly is true, just return the configuration without saving
-    if (jsonOnly) {
-      return createSuccessResponse('✅ Command config generated', commandConfig);
-    }
-
-    // Check environment variable - points to LLM (e.g., Claude) config file path
-    const externalConfigPath = process.env.MCP_SETTINGS_PATH;
-    if (!externalConfigPath) {
-      return createErrorResponse(
-        '❌ MCP_SETTINGS_PATH not set. Please set it to your LLM config path.',
-      );
-    }
-
-    try {
-      // Read external LLM configuration file
-      const configData = await fs.readFile(externalConfigPath, 'utf-8');
-      const config = JSON.parse(configData);
-
-      // Ensure mcpServers field exists
-      if (!config.mcpServers) {
-        config.mcpServers = {};
-      }
-
-      // Add/update server configuration to LLM config file
-      config.mcpServers[serverName] = commandConfig;
-
-      // Save configuration to LLM config file
-      await fs.writeFile(externalConfigPath, JSON.stringify(config, null, 2), 'utf-8');
-
-      // Also update internal server configuration - save to our MCP server registry
-      server.commandConfig = commandConfig;
-
-      // Update server description if provided
-      if (description) {
-        server.description = description;
-      }
-
-      await saveSettings();
-
-      return createSuccessResponse(`✅ Command saved for '${serverName}'`);
-    } catch (error) {
-      return createErrorResponse(`⚠️ Config file error: ${(error as Error).message}`);
-    }
-  } catch (error) {
-    return createErrorResponse(`⚠️ Command save error: ${(error as Error).message}`);
-  }
-}
+// Re-export for CLI usage
+export { searchServers, getServer } from './registry.js';
