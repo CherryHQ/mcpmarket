@@ -1,10 +1,11 @@
 {
   "name": "@mcpmarket/mcp-auto-install",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "MCP server that discovers and installs MCP servers from the official registry",
   "type": "module",
   "main": "./dist/index.js",
   "bin": {
+    "mai": "./dist/index.js",
     "mcp-auto-install": "./dist/index.js"
   },
   "exports": {

@@ -1,209 +1,145 @@
-# @mcpmarket/auto-install
+# @mcpmarket/mcp-auto-install
 
-A powerful MCP server with CLI that integrates into your client's MCP ecosystem. It enables you to install and manage other MCP servers through natural language conversations with LLMs. By default, it discovers MCP servers from the `@modelcontextprotocol` scope, but you can customize the sources using the `add-source` command.
+An MCP server that lets LLMs discover, install, and manage other MCP servers through natural language. Backed by the official [MCP Registry](https://registry.modelcontextprotocol.io), with an npm-scope fallback for offline / outage scenarios.
 
-## ✨ Features
+## What's new in v0.2.0
 
-- **Natural Language Interaction**: Install and manage MCP servers through natural language conversations with LLMs
-- **Automatic Server Discovery**: Automatically discovers MCP servers from the `@modelcontextprotocol` scope
-- **Custom Source Management**: Add and manage custom MCP server sources
-- **Command Configuration**: Save and manage server commands with environment variables
-- **Server Documentation**: Access server READMEs directly through the CLI
-- **Direct MCP Connection**: Quick connection to MCP services using npx
-- **JSON Configuration Support**: Parse and validate JSON configurations for bulk server setup
-- **JSON Output Format**: Support for machine-readable JSON output with `--json` flag
-- **Custom Registry Location**: Customize registry location via environment variable
-- **Service Descriptions**: Add descriptive metadata to MCP services
+- **Official MCP Registry** as the primary data source
+- **5 focused tools** (`mai_*`) replacing the previous tool surface
+- **Multi-client auto-detection**: writes config to Claude Desktop, Cursor, and Windsurf in one call
+- **`dryRun` mode** for clients that manage their own config storage (e.g. CherryStudio)
+- **Atomic file writes** with `.bak` backups — safe to interrupt
+- **Removed git-clone install flow** — pure config writes via `npx` / `uvx` / `docker`
+- **Short CLI**: new `mai` binary (the old `mcp-auto-install` name still works)
 
-## 📦 Installation
+See [CHANGELOG.md](./CHANGELOG.md) for the full release notes.
 
-You can install this package in two ways:
+## Installation
 
-1. **Global Installation**:
+The most common usage is to register this package as an MCP server in your LLM client.
 
-   ```bash
-   pnpm add -g @mcpmarket/mcp-auto-install
-   ```
+### Claude Desktop / Cursor / Windsurf
 
-2. **Direct Execution with npx**:
+Add to your client's MCP config:
 
-   ```bash
-   # Connect to MCP service
-   npx -y @mcpmarket/mcp-auto-install connect
-
-   # Use CLI commands
-   npx @mcpmarket/mcp-auto-install [command] [options]
-   ```
-
-## 🚀 Usage
-
-### Starting the Server
-
-```bash
-# Start the MCP Auto Install server
-mcp-auto-install start
-
-# Start with JSON output
-mcp-auto-install start --json
-```
-
-### Connecting to MCP Service
-
-```bash
-# Quick connection using npx
-npx -y @mcpmarket/mcp-auto-install connect
-
-# With JSON output (for programmatic use)
-npx -y @mcpmarket/mcp-auto-install connect --json
-```
-
-### Managing Server Sources
-
-```bash
-# Add a new server source
-mcp-auto-install add-source my-server -r https://github.com/username/repo -c "npx @modelcontextprotocol/server-name" -d "My MCP Server"
-
-# List registered servers
-mcp-auto-install list
-
-# Remove a server
-mcp-auto-install remove my-server
-```
-
-### Installing Servers
-
-```bash
-# Install a server
-mcp-auto-install install my-server
-```
-
-### Managing Commands
-
-```bash
-# Save a command for a server
-mcp-auto-install save-command my-server npx @modelcontextprotocol/server-name --port 3000 --env NODE_ENV=production
-
-# Save command with description
-mcp-auto-install save-command my-server npx @modelcontextprotocol/server-name --port 3000 --description "A server that handles file operations"
-
-# Save command with JSON output
-mcp-auto-install save-command my-server npx @modelcontextprotocol/server-name --port 3000 --json
-```
-
-### Viewing Documentation
-
-```bash
-# Get server README
-mcp-auto-install readme my-server
-
-# Get server configuration help
-mcp-auto-install configure-server my-server
-```
-
-### Bulk Configuration
-
-```bash
-# Parse and save JSON configuration
-mcp-auto-install parse-config '{
+```json
+{
   "mcpServers": {
-    "my-server": {
-      "command": "npx @modelcontextprotocol/server-name",
-      "args": ["--port", "3000"],
-      "description": "A server that handles file operations"
+    "mcp-auto-install": {
+      "command": "npx",
+      "args": ["-y", "@mcpmarket/mcp-auto-install"]
     }
   }
-}'
-
-# Parse configuration with JSON output
-mcp-auto-install parse-config '{"mcpServers":{...}}' --json
+}
 ```
 
-## 🔧 Configuration
+Restart the client. The 5 `mai_*` tools become available to the LLM.
 
-The tool uses two configuration files:
-
-1. **MCP Registry** (`mcp-registry.json`): Stores information about registered MCP server sources
-
-   - Default locations:
-     - Windows: `%APPDATA%\mcp\mcp-registry.json`
-     - macOS/Linux: `~/.mcp/mcp-registry.json`
-   - Can be customized with the `MCP_REGISTRY_PATH` environment variable
-
-2. **External Configuration**: Specified by the `MCP_SETTINGS_PATH` environment variable, used for storing server command configurations
-
-### Environment Variables
-
-- `MCP_SETTINGS_PATH`: Path to the LLM (e.g., Claude) MCP service configuration file
-
-  ```bash
-  export MCP_SETTINGS_PATH="/Users/username/Library/Application Support/Claude/claude_desktop_config.json"
-  ```
-
-- `MCP_REGISTRY_PATH`: Custom path to the MCP registry file (default: `~/.mcp/mcp-registry.json`)
-  ```bash
-  export MCP_REGISTRY_PATH="/path/to/custom/mcp-registry.json"
-  ```
-
-### MCP_PACKAGE_SCOPES
-
-Specify one or more package scopes to search for MCP servers. Multiple scopes can be specified using comma separation.
-
-Default value: `@modelcontextprotocol`
-
-Examples:
+### Global install (optional, for CLI use)
 
 ```bash
-# Single scope
-MCP_PACKAGE_SCOPES=@modelcontextprotocol
-
-# Multiple scopes
-MCP_PACKAGE_SCOPES=@modelcontextprotocol,@other-scope
-
-# Multiple scopes with spaces
-MCP_PACKAGE_SCOPES=@modelcontextprotocol, @other-scope
+pnpm add -g @mcpmarket/mcp-auto-install
+# both `mai` and `mcp-auto-install` are now on your PATH
 ```
 
-## 📝 Version History
+## Usage as an MCP server
 
-- v0.1.6: Added support for multiple package scopes via `MCP_PACKAGE_SCOPES` environment variable
-- v0.1.5: Fixed dependencies in package.json
-- v0.1.1: Added JSON configuration support and improved command management
-- v0.1.0: Added support for custom server sources and command configuration
-- v0.0.4: Added direct MCP connection support with npx
-- v0.0.3: Added support for npx execution and improved command management
-- v0.0.2: Added server source management and command configuration
-- v0.0.1: Initial release with basic MCP server installation functionality
+Once registered, ask the LLM in natural language. Example:
 
-## 📜 License
+> "Find me an MCP server for filesystem access, install the official one for Claude Desktop, and tell me what env vars I need to set."
 
-[MIT](./LICENSE)
+The LLM will chain `mai_search` → `mai_details` → `mai_install` to complete the task.
 
-## 🎮 Features
+### Tool reference
 
-- 🤖 Natural language interaction with LLMs for server installation
-- 🔍 Automatic discovery of MCP servers from `@modelcontextprotocol` scope
-- 📦 Custom server source management through GitHub repositories
-- 📚 Server documentation and README viewing
-- ⚙️ Flexible command and environment configuration
-- 🔄 Seamless integration with your MCP ecosystem
-- 🔌 Quick connection to MCP services with npx
-- 📋 JSON-based bulk configuration support
-- 🧩 Machine-readable JSON output format for automation
-- 📝 Descriptive metadata for MCP services
+| Tool          | Purpose                                                                                                             |
+| ------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `mai_search`  | Search the registry by keyword. Returns name, description, version, supported package types.                        |
+| `mai_details` | Structured metadata for a server: env vars, arguments, transport, install command.                                  |
+| `mai_readme`  | Fetch the full README from GitHub. Use when you need usage examples or a tool list (`mai_details` is summary-only). |
+| `mai_install` | Resolve the best package and write the config to all detected client config files. Supports `dryRun`.               |
+| `mai_remove`  | Remove a server from all client config files.                                                                       |
 
-## 📋 Prerequisites
+## Usage as a CLI
+
+The same operations are available as CLI commands using the `mai` binary:
+
+```bash
+mai search filesystem
+mai info io.github.modelcontextprotocol/server-filesystem
+mai readme io.github.modelcontextprotocol/server-filesystem
+mai install io.github.modelcontextprotocol/server-filesystem --env API_KEY=xxx
+mai install io.github.modelcontextprotocol/server-filesystem --dry-run
+mai remove io.github.modelcontextprotocol/server-filesystem
+mai --help
+```
+
+`mai` with no arguments starts the MCP server (same as `mai start`). The legacy `mcp-auto-install` command is preserved as an alias.
+
+## Configuration
+
+### Client config locations
+
+By default, `mai_install` / `mai install` writes to all detected client config files:
+
+| Client         | macOS                                                             | Windows                                           | Linux                                         |
+| -------------- | ----------------------------------------------------------------- | ------------------------------------------------- | --------------------------------------------- |
+| Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json` | `%APPDATA%/Claude/claude_desktop_config.json`     | `~/.config/Claude/claude_desktop_config.json` |
+| Cursor         | `~/.cursor/mcp.json`                                              | `%USERPROFILE%/.cursor/mcp.json`                  | `~/.cursor/mcp.json`                          |
+| Windsurf       | `~/.codeium/windsurf/mcp_config.json`                             | `%USERPROFILE%/.codeium/windsurf/mcp_config.json` | `~/.codeium/windsurf/mcp_config.json`         |
+
+Set `MCP_SETTINGS_PATH` to override and target a single file.
+
+### Environment variables
+
+| Variable             | Default                    | Description                                                                                     |
+| -------------------- | -------------------------- | ----------------------------------------------------------------------------------------------- |
+| `MCP_SETTINGS_PATH`  | _(unset)_                  | Override target config file. When set, only this file is written.                               |
+| `MCP_REGISTRY_PATH`  | `~/.mcp/mcp-registry.json` | Local cache file for registry data (1-hour TTL).                                                |
+| `MCP_PACKAGE_SCOPES` | `@modelcontextprotocol`    | Comma-separated npm scopes used by the npm-scope fallback when the Registry API is unreachable. |
+
+## CherryStudio / custom-config integration
+
+Clients that manage their own MCP config (e.g. SQLite-backed CherryStudio) should call `mai_install` with `dryRun: true`. The tool returns the resolved config payload without touching any files; the client persists it to its own storage.
+
+Request:
+
+```json
+{
+  "name": "mai_install",
+  "arguments": {
+    "serverName": "io.github.modelcontextprotocol/server-filesystem",
+    "env": { "API_KEY": "xxx" },
+    "dryRun": true
+  }
+}
+```
+
+Response `data` field:
+
+```json
+{
+  "serverName": "io.github.modelcontextprotocol/server-filesystem",
+  "config": {
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-filesystem"],
+    "env": { "API_KEY": "xxx" }
+  },
+  "registryType": "npm",
+  "transport": { "type": "stdio" },
+  "requiredEnvVars": [{ "name": "API_KEY", "description": "...", "isSecret": true }]
+}
+```
+
+## Prerequisites
 
 - Node.js >= 18.0.0
-- npm or pnpm package manager
-- An MCP-compatible client (e.g., Claude)
+- An MCP-compatible client (Claude Desktop, Cursor, Windsurf, CherryStudio, ...)
 
-## 🤝 Contributing
+## Contributing
 
-- Development workflow
-- Creating new packages
-- Publishing packages
-- Pull request process
+Issues and PRs welcome at [github.com/CherryHQ/mcpmarket](https://github.com/CherryHQ/mcpmarket/issues).
 
-## Support
+## License
 
-For support, please open an issue in the [GitHub repository](https://github.com/CherryHQ/mcpmarket/issues).
+[MIT](./LICENSE)

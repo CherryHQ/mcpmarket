@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.1 — 2026-04-21
+
+### Added
+
+- `mai readme <name>` CLI command, mirroring the `mai_readme` MCP tool.
+- `mai` short binary alias. The legacy `mcp-auto-install` binary continues to work.
+
+### Changed
+
+- Rewrote `README.md` for v0.2.0 — the previous README still documented the v0.1.x command surface (`add-source`, `parse-config`, `save-command`, etc.) that no longer exists.
+
 ## 0.2.0 — 2026-04-20
 
 Major rewrite. Switches from a custom npm-scope discovery model to the official MCP Registry, redesigns the tool surface for LLM-driven workflows, and ships fixes for several silent-failure / data-loss issues in the previous version.

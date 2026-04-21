@@ -5,7 +5,13 @@ import { Command } from 'commander';
 
 import { startServer, searchServers, getServer } from './server.js';
 import { writeServerConfig, removeServerConfig } from './clients.js';
-import { pickBestPackage, resolveCommand, resolveArgs, buildInstallCommand } from './helpers.js';
+import {
+  pickBestPackage,
+  resolveCommand,
+  resolveArgs,
+  buildInstallCommand,
+  fetchReadme,
+} from './helpers.js';
 
 const require = createRequire(import.meta.url);
 const { version: PKG_VERSION } = require('../package.json') as { version: string };
@@ -23,7 +29,7 @@ export class MCPCliApp {
 
   private setupCLI() {
     this.program
-      .name('mcp-auto-install')
+      .name('mai')
       .description('Discover, install, and manage MCP servers from the official registry')
       .version(PKG_VERSION);
 
@@ -218,6 +224,41 @@ export class MCPCliApp {
         }
 
         console.log(`Removed "${name}" from: ${removed.join(', ')}`);
+        process.exit(0);
+      });
+
+    // Fetch README from GitHub
+    this.program
+      .command('readme <name>')
+      .description("Fetch the server's README from GitHub")
+      .action(async (name: string) => {
+        try {
+          const entry = await getServer(name);
+          if (!entry) {
+            console.error(`Server "${name}" not found in the registry.`);
+            process.exit(1);
+          }
+
+          const repo = entry.server.repository;
+          if (!repo?.url) {
+            console.error(`Server "${name}" has no repository URL.`);
+            process.exit(1);
+          }
+
+          const readme = await fetchReadme(repo.url, repo.subfolder);
+          if (!readme) {
+            console.error(
+              `Could not fetch README for "${name}". Repository: ${repo.url}\n` +
+                'Only GitHub repositories are supported. The README may not exist or the repository may be private.',
+            );
+            process.exit(1);
+          }
+
+          console.log(readme);
+        } catch (error) {
+          console.error('Failed:', (error as Error).message);
+          process.exit(1);
+        }
         process.exit(0);
       });
   }
