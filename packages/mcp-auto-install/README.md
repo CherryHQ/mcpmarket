@@ -16,6 +16,8 @@ See [CHANGELOG.md](./CHANGELOG.md) for the full release notes.
 
 ## Installation
 
+> **v0.2.x is currently published under the `next` npm tag** while CherryStudio integration is being verified. Pin `@next` (or an explicit version like `@0.2.1`) until v0.2.x is promoted to `latest`. Without `@next`, you'll get the v0.1.x line, which has a completely different tool surface.
+
 The most common usage is to register this package as an MCP server in your LLM client.
 
 ### Claude Desktop / Cursor / Windsurf
@@ -27,7 +29,7 @@ Add to your client's MCP config:
   "mcpServers": {
     "mcp-auto-install": {
       "command": "npx",
-      "args": ["-y", "@mcpmarket/mcp-auto-install"]
+      "args": ["-y", "@mcpmarket/mcp-auto-install@next"]
     }
   }
 }
@@ -38,7 +40,7 @@ Restart the client. The 5 `mai_*` tools become available to the LLM.
 ### Global install (optional, for CLI use)
 
 ```bash
-pnpm add -g @mcpmarket/mcp-auto-install
+pnpm add -g @mcpmarket/mcp-auto-install@next
 # both `mai` and `mcp-auto-install` are now on your PATH
 ```
 
