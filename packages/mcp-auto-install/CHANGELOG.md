@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.3.0 — 2026-09-20
+
+### Added
+
+- `arguments` input on `mai_install` (`--arg name=value` on the CLI) to fill package arguments the registry declares; required ones left out come back as `requiredArguments`.
+- Remote-only servers resolve to a `{ type, url, headers }` config (`kind: "remote"`); headers with a fixed `value` are applied, required ones without a value are reported as `requiredHeaders`.
+- NuGet packages run as `dnx <identifier>@<version>`; Cargo crates run as the binary `cargo install` puts on PATH.
+- `mai_install` declares an `outputSchema` and returns every result as `structuredContent` (mirrored as JSON text).
+- Tool `title`s and `annotations`: `mai_search` / `mai_details` / `mai_readme` are `readOnlyHint`, `mai_install` / `mai_remove` are `destructiveHint`.
+- Mocha test suite (`pnpm test`) covering package resolution, install planning and the MCP surface over an in-memory transport.
+
+### Changed
+
+- `requiredEnvVars` entries keep the registry's `default`, `format` and `choices` so clients can prefill values or render pickers.
+- One pure `buildInstallPlan` builds the install plan for both the MCP tool and the CLI; the CLI dry run now reports required env vars, arguments and headers too.
+- `mai_install` results carry `kind: "package" | "remote" | "unsupported"`.
+
+### Fixed
+
+- Package types with no launcher (`mcpb`, unknown) no longer produce a bogus `npx <identifier>` command; they are reported as unsupported with the reason.
+- Required package arguments without a default are no longer silently dropped from the command.
+
 ## 0.2.1 — 2026-04-21
 
 ### Added

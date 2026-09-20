@@ -10,13 +10,8 @@ import { z } from 'zod';
 import type { RegistryServerEntry } from './types.js';
 import * as registry from './registry.js';
 import { writeServerConfig, removeServerConfig } from './clients.js';
-import {
-  pickBestPackage,
-  resolveCommand,
-  resolveArgs,
-  buildInstallCommand,
-  fetchReadme,
-} from './helpers.js';
+import { buildInstallCommand, fetchReadme } from './helpers.js';
+import { buildInstallPlan } from './plan.js';
 import { toToolResponse } from './utils/response.js';
 
 // ---------------------------------------------------------------------------
@@ -253,6 +248,12 @@ const InstallInputSchema = z.object({
     .record(z.string())
     .optional()
     .describe('Environment variables to set (e.g. { "API_KEY": "xxx" })'),
+  arguments: z
+    .record(z.string())
+    .optional()
+    .describe(
+      'Values for package arguments the registry declares, keyed by argument name (e.g. { "--port": "8080" }). Required ones you leave out are reported back as requiredArguments.',
+    ),
   dryRun: z
     .boolean()
     .optional()
@@ -279,65 +280,27 @@ async function handleInstall(args: z.infer<typeof InstallInputSchema>) {
     });
   }
 
-  const s = entry.server;
+  const name = entry.server.name;
+  const plan = buildInstallPlan(entry.server, { env: args.env, arguments: args.arguments });
+  const structured = { serverName: args.serverName, ...plan };
 
-  // Pick the best package (prefer npm stdio)
-  const pkg = pickBestPackage(s.packages || []);
-  if (!pkg) {
-    // Check for remote-only servers
-    if (s.remotes?.length) {
-      return toToolResponse({
-        success: false,
-        message: [
-          `"${s.name}" is a remote-only server (no local package).`,
-          `Connect via: ${s.remotes[0].type} at ${s.remotes[0].url}`,
-          'Remote server configuration is not yet supported by auto-install.',
-        ],
-      });
-    }
-
+  if (plan.kind === 'unsupported') {
     return toToolResponse({
       success: false,
-      message: [`No installable package found for "${s.name}".`],
+      message: [`Cannot install "${name}": ${plan.reason}`],
+      structured,
     });
   }
 
-  // Build command config
-  const command = resolveCommand(pkg);
-  const cmdArgs = resolveArgs(pkg);
-  const env = args.env || {};
-
-  const configPayload = {
-    command,
-    args: cmdArgs,
-    ...(Object.keys(env).length > 0 && { env }),
-  };
-
-  // Dry run: return config data without writing
   if (args.dryRun) {
-    const requiredEnvVars = (pkg.environmentVariables || []).filter(
-      ev => ev.isRequired && !env[ev.name],
-    );
-
     return toToolResponse({
       success: true,
-      message: [`Config for "${s.name}" (dry run):`],
-      data: {
-        serverName: args.serverName,
-        config: configPayload,
-        registryType: pkg.registryType,
-        transport: pkg.transport,
-        requiredEnvVars: requiredEnvVars.map(ev => ({
-          name: ev.name,
-          description: ev.description,
-          isSecret: ev.isSecret || false,
-        })),
-      },
+      message: [`Config for "${name}" (dry run):`],
+      structured,
     });
   }
 
-  // Write to client configs
-  const written = await writeServerConfig(args.serverName, configPayload);
+  const written = await writeServerConfig(args.serverName, plan.config);
 
   if (written.length === 0) {
     return toToolResponse({
@@ -346,28 +309,36 @@ async function handleInstall(args: z.infer<typeof InstallInputSchema>) {
         `Failed to write config. No LLM client config files found.`,
         'Set MCP_SETTINGS_PATH or install a supported client (Claude Desktop, Cursor, Windsurf).',
       ],
+      structured,
     });
   }
 
-  // Report required env vars the user still needs to set
-  const requiredEnvVars = (pkg.environmentVariables || []).filter(
-    ev => ev.isRequired && !env[ev.name],
-  );
+  const messages = [`Installed "${name}" to: ${written.join(', ')}`];
+  const pending: string[] = [];
+  if (plan.kind === 'package') {
+    messages.push(`Command: ${plan.config.command} ${plan.config.args.join(' ')}`);
+    pending.push(
+      ...plan.requiredEnvVars.map(r => `  env ${r.name}: ${r.description}`),
+      ...plan.requiredArguments.map(a => `  argument ${a.name}: ${a.description}`),
+    );
+  } else {
+    messages.push(`URL: ${plan.config.url}`);
+    pending.push(...plan.requiredHeaders.map(h => `  header ${h.name}: ${h.description}`));
+  }
 
-  const messages = [
-    `Installed "${s.name}" to: ${written.join(', ')}`,
-    `Command: ${command} ${cmdArgs.join(' ')}`,
-  ];
-
-  if (requiredEnvVars.length > 0) {
+  if (pending.length > 0) {
     messages.push(
-      '\nRequired environment variables not yet set:',
-      ...requiredEnvVars.map(ev => `  ${ev.name}: ${ev.description}`),
-      '\nSet these in the server config or re-run with --env.',
+      '\nStill required before the server can start:',
+      ...pending,
+      '\nSet these in the server config or re-run with env / arguments.',
     );
   }
 
-  return toToolResponse({ success: true, message: messages });
+  return toToolResponse({
+    success: true,
+    message: messages,
+    structured: { ...structured, written },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -509,10 +480,49 @@ function describeZodType(schema: z.ZodTypeAny): Record<string, unknown> {
 }
 
 // ---------------------------------------------------------------------------
+// Tool metadata
+// ---------------------------------------------------------------------------
+
+const REQUIREMENT_SCHEMA = {
+  type: 'object',
+  properties: {
+    name: { type: 'string' },
+    description: { type: 'string' },
+    isSecret: { type: 'boolean' },
+    default: { type: 'string' },
+    format: { type: 'string' },
+    choices: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['name', 'description', 'isSecret'],
+};
+
+/** Shape of every mai_install result: the install plan plus what was written, if anything. */
+const INSTALL_OUTPUT_SCHEMA = {
+  type: 'object',
+  properties: {
+    serverName: { type: 'string' },
+    kind: { type: 'string', enum: ['package', 'remote', 'unsupported'] },
+    registryType: { type: 'string' },
+    transport: { type: 'object' },
+    config: {
+      type: 'object',
+      description:
+        'Launch config in mcpServers JSON shape: { command, args, env? } for a package, { type, url, headers? } for a remote.',
+    },
+    requiredEnvVars: { type: 'array', items: REQUIREMENT_SCHEMA },
+    requiredArguments: { type: 'array', items: { type: 'object' } },
+    requiredHeaders: { type: 'array', items: REQUIREMENT_SCHEMA },
+    reason: { type: 'string' },
+    written: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['serverName', 'kind'],
+};
+
+// ---------------------------------------------------------------------------
 // Server setup
 // ---------------------------------------------------------------------------
 
-function createServer() {
+export function createServer() {
   const server = new Server(
     { name: 'mcp-auto-install', version: PKG_VERSION },
     { capabilities: { tools: {} } },
@@ -521,29 +531,40 @@ function createServer() {
   const tools = [
     {
       name: 'mai_search',
+      title: 'Search MCP servers',
+      annotations: { readOnlyHint: true, openWorldHint: true },
       description:
         'Search for MCP servers in the official registry. Returns server names, descriptions, versions, and supported package types. Use this to discover available servers before installing.',
       inputSchema: zodToInputSchema(SearchInputSchema),
     },
     {
       name: 'mai_details',
+      title: 'MCP server details',
+      annotations: { readOnlyHint: true, openWorldHint: true },
       description:
         'Get detailed information about a specific MCP server from the registry. Returns environment variables, arguments, transport config, and installation commands.',
       inputSchema: zodToInputSchema(DetailsInputSchema),
     },
     {
       name: 'mai_install',
+      title: 'Install MCP server',
+      annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: true },
       description:
-        'Install an MCP server by writing its configuration to LLM client config files (Claude Desktop, Cursor, Windsurf). Automatically builds the correct npx/uvx/docker command from registry metadata.',
+        'Install an MCP server by writing its configuration to LLM client config files (Claude Desktop, Cursor, Windsurf). Builds the correct launch command (npx/uvx/docker/dnx or a cargo binary) or remote URL config from registry metadata. Pass dryRun: true to get the plan as structuredContent without writing anything — for clients that store MCP config themselves. Supply env and arguments the registry marks required; whatever you leave out comes back as requiredEnvVars / requiredArguments / requiredHeaders.',
       inputSchema: zodToInputSchema(InstallInputSchema),
+      outputSchema: INSTALL_OUTPUT_SCHEMA,
     },
     {
       name: 'mai_remove',
+      title: 'Remove MCP server',
+      annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
       description: 'Remove an MCP server from LLM client config files.',
       inputSchema: zodToInputSchema(RemoveInputSchema),
     },
     {
       name: 'mai_readme',
+      title: 'MCP server README',
+      annotations: { readOnlyHint: true, openWorldHint: true },
       description:
         'Get the full documentation (README) of an MCP server. Returns available tools, usage examples, configuration guides, and other details not included in mai_details. Use this when you need to understand what a server can do or help the user decide between similar servers.',
       inputSchema: zodToInputSchema(ReadmeInputSchema),

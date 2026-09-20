@@ -34,5 +34,13 @@ export function toToolResponse(result: OperationResult) {
     });
   }
 
-  return { content, isError: !result.success };
+  if (result.structured) {
+    content.push({ type: 'text' as const, text: JSON.stringify(result.structured, null, 2) });
+  }
+
+  return {
+    content,
+    isError: !result.success,
+    ...(result.structured && { structuredContent: result.structured }),
+  };
 }

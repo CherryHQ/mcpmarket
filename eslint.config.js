@@ -18,6 +18,10 @@ export default [
     ],
   },
   {
+    files: ['packages/**/test/**/*.ts'],
+    languageOptions: { globals: globals.mocha },
+  },
+  {
     files: ['**/*.{js,jsx,ts,tsx}'],
     languageOptions: {
       parser: tsParser,

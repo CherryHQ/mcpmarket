@@ -1,6 +1,6 @@
 {
   "name": "@mcpmarket/mcp-auto-install",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "MCP server that discovers and installs MCP servers from the official registry",
   "type": "module",
   "main": "./dist/index.js",
@@ -34,7 +34,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "ts-node --esm src/index.ts",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "cross-env TS_NODE_TRANSPILE_ONLY=1 mocha",
     "prepublishOnly": "npm run clean && npm run build"
   },
   "keywords": [

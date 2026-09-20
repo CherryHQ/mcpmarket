@@ -63,6 +63,8 @@ export interface RegistryHeader {
   value?: string;
   isRequired?: boolean;
   isSecret?: boolean;
+  default?: string;
+  choices?: string[];
 }
 
 /**
@@ -85,6 +87,7 @@ export interface EnvVarDef {
   isSecret?: boolean;
   default?: string;
   format?: string;
+  choices?: string[];
 }
 
 /**
@@ -156,4 +159,6 @@ export interface OperationResult {
   success: boolean;
   message: string[];
   data?: unknown;
+  /** Machine-readable result, emitted as MCP structuredContent alongside its JSON text. */
+  structured?: Record<string, unknown>;
 }

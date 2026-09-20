@@ -5,16 +5,18 @@ import { Command } from 'commander';
 
 import { startServer, searchServers, getServer } from './server.js';
 import { writeServerConfig, removeServerConfig } from './clients.js';
-import {
-  pickBestPackage,
-  resolveCommand,
-  resolveArgs,
-  buildInstallCommand,
-  fetchReadme,
-} from './helpers.js';
+import { buildInstallCommand, fetchReadme } from './helpers.js';
+import { buildInstallPlan } from './plan.js';
 
 const require = createRequire(import.meta.url);
 const { version: PKG_VERSION } = require('../package.json') as { version: string };
+
+/** commander reducer for repeatable `--opt key=value` flags. */
+function collectKeyValue(val: string, prev: Record<string, string>): Record<string, string> {
+  const eq = val.indexOf('=');
+  if (eq === -1) return prev;
+  return { ...prev, [val.slice(0, eq)]: val.slice(eq + 1) };
+}
 
 /**
  * CLI application for MCP Auto Install.
@@ -131,85 +133,66 @@ export class MCPCliApp {
     this.program
       .command('install <name>')
       .description('Install and configure an MCP server')
-      .option(
-        '--env <key=value>',
-        'Set environment variable (repeatable)',
-        (val: string, prev: Record<string, string>) => {
-          const eqIndex = val.indexOf('=');
-          if (eqIndex === -1) return prev;
-          const key = val.slice(0, eqIndex);
-          const value = val.slice(eqIndex + 1);
-          return { ...prev, [key]: value };
-        },
-        {} as Record<string, string>,
-      )
-      .option('--dry-run', 'Return config without writing to files')
-      .action(async (name: string, options: { env: Record<string, string>; dryRun?: boolean }) => {
-        try {
-          const entry = await getServer(name);
-          if (!entry) {
-            console.error(`Server "${name}" not found in the registry.`);
-            process.exit(1);
-          }
-
-          const s = entry.server;
-          const pkg = pickBestPackage(s.packages || []);
-          if (!pkg) {
-            console.error(`No installable package found for "${name}".`);
-            process.exit(1);
-          }
-
-          const command = resolveCommand(pkg);
-          const args = resolveArgs(pkg);
-          const env = options.env;
-          const config = {
-            command,
-            args,
-            ...(Object.keys(env).length > 0 && { env }),
-          };
-
-          // Dry run: just print config
-          if (options.dryRun) {
-            console.log(
-              JSON.stringify(
-                {
-                  serverName: name,
-                  config,
-                  registryType: pkg.registryType,
-                  transport: pkg.transport,
-                },
-                null,
-                2,
-              ),
-            );
-            process.exit(0);
-          }
-
-          const written = await writeServerConfig(name, config);
-          if (written.length === 0) {
-            console.error('No LLM client configs found. Set MCP_SETTINGS_PATH.');
-            process.exit(1);
-          }
-
-          console.log(`Installed "${name}" to: ${written.join(', ')}`);
-          console.log(`  ${command} ${args.join(' ')}`);
-
-          // Warn about required env vars
-          const missing = (pkg.environmentVariables || []).filter(
-            ev => ev.isRequired && !env[ev.name],
-          );
-          if (missing.length > 0) {
-            console.log('\nRequired env vars not set:');
-            for (const ev of missing) {
-              console.log(`  ${ev.name}: ${ev.description}`);
+      .option('--env <key=value>', 'Set environment variable (repeatable)', collectKeyValue, {})
+      .option('--arg <name=value>', 'Set a package argument (repeatable)', collectKeyValue, {})
+      .option('--dry-run', 'Print the install plan without writing to files')
+      .action(
+        async (
+          name: string,
+          options: { env: Record<string, string>; arg: Record<string, string>; dryRun?: boolean },
+        ) => {
+          try {
+            const entry = await getServer(name);
+            if (!entry) {
+              console.error(`Server "${name}" not found in the registry.`);
+              process.exit(1);
             }
+
+            const plan = buildInstallPlan(entry.server, {
+              env: options.env,
+              arguments: options.arg,
+            });
+            if (plan.kind === 'unsupported') {
+              console.error(`Cannot install "${name}": ${plan.reason}`);
+              process.exit(1);
+            }
+
+            if (options.dryRun) {
+              console.log(JSON.stringify({ serverName: name, ...plan }, null, 2));
+              process.exit(0);
+            }
+
+            const written = await writeServerConfig(name, plan.config);
+            if (written.length === 0) {
+              console.error('No LLM client configs found. Set MCP_SETTINGS_PATH.');
+              process.exit(1);
+            }
+
+            console.log(`Installed "${name}" to: ${written.join(', ')}`);
+            const pending: string[] = [];
+            if (plan.kind === 'package') {
+              console.log(`  ${plan.config.command} ${plan.config.args.join(' ')}`);
+              pending.push(
+                ...plan.requiredEnvVars.map(r => `  env ${r.name}: ${r.description}`),
+                ...plan.requiredArguments.map(a => `  argument ${a.name}: ${a.description}`),
+              );
+            } else {
+              console.log(`  ${plan.config.url}`);
+              pending.push(
+                ...plan.requiredHeaders.map(h => `  header ${h.name}: ${h.description}`),
+              );
+            }
+            if (pending.length > 0) {
+              console.log('\nStill required before the server can start:');
+              for (const line of pending) console.log(line);
+            }
+          } catch (error) {
+            console.error('Install failed:', (error as Error).message);
+            process.exit(1);
           }
-        } catch (error) {
-          console.error('Install failed:', (error as Error).message);
-          process.exit(1);
-        }
-        process.exit(0);
-      });
+          process.exit(0);
+        },
+      );
 
     // Remove a server
     this.program

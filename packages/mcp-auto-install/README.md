@@ -2,21 +2,18 @@
 
 An MCP server that lets LLMs discover, install, and manage other MCP servers through natural language. Backed by the official [MCP Registry](https://registry.modelcontextprotocol.io), with an npm-scope fallback for offline / outage scenarios.
 
-## What's new in v0.2.0
+## What's new in v0.3.0
 
-- **Official MCP Registry** as the primary data source
-- **5 focused tools** (`mai_*`) replacing the previous tool surface
-- **Multi-client auto-detection**: writes config to Claude Desktop, Cursor, and Windsurf in one call
-- **`dryRun` mode** for clients that manage their own config storage (e.g. CherryStudio)
-- **Atomic file writes** with `.bak` backups — safe to interrupt
-- **Removed git-clone install flow** — pure config writes via `npx` / `uvx` / `docker`
-- **Short CLI**: new `mai` binary (the old `mcp-auto-install` name still works)
+- **Complete install plans**: `mai_install` returns `kind: package | remote | unsupported` and reports `requiredEnvVars` with every registry hint (`default`, `format`, `choices`), `requiredArguments` for package arguments it could not fill, and `requiredHeaders` for remotes
+- **`arguments` input** on `mai_install` (`--arg name=value` on the CLI) to fill package arguments, symmetric with `env`
+- **Remote servers** resolve to a `{ type, url, headers }` config instead of failing
+- **More package types**: NuGet via `dnx <id>@<version>`, Cargo binaries by crate name; `mcpb` bundles are reported as unsupported instead of getting a bogus `npx` command
+- **Structured output**: `mai_install` declares an `outputSchema` and returns the plan as `structuredContent`
+- **Tool annotations and titles**: read-only tools carry `readOnlyHint`, config-writing tools carry `destructiveHint`
 
 See [CHANGELOG.md](./CHANGELOG.md) for the full release notes.
 
 ## Installation
-
-> **v0.2.x is currently published under the `next` npm tag** while CherryStudio integration is being verified. Pin `@next` (or an explicit version like `@0.2.1`) until v0.2.x is promoted to `latest`. Without `@next`, you'll get the v0.1.x line, which has a completely different tool surface.
 
 The most common usage is to register this package as an MCP server in your LLM client.
 
@@ -29,7 +26,7 @@ Add to your client's MCP config:
   "mcpServers": {
     "mcp-auto-install": {
       "command": "npx",
-      "args": ["-y", "@mcpmarket/mcp-auto-install@next"]
+      "args": ["-y", "@mcpmarket/mcp-auto-install"]
     }
   }
 }
@@ -40,7 +37,7 @@ Restart the client. The 5 `mai_*` tools become available to the LLM.
 ### Global install (optional, for CLI use)
 
 ```bash
-pnpm add -g @mcpmarket/mcp-auto-install@next
+pnpm add -g @mcpmarket/mcp-auto-install
 # both `mai` and `mcp-auto-install` are now on your PATH
 ```
 
@@ -54,13 +51,13 @@ The LLM will chain `mai_search` → `mai_details` → `mai_install` to complete 
 
 ### Tool reference
 
-| Tool          | Purpose                                                                                                             |
-| ------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `mai_search`  | Search the registry by keyword. Returns name, description, version, supported package types.                        |
-| `mai_details` | Structured metadata for a server: env vars, arguments, transport, install command.                                  |
-| `mai_readme`  | Fetch the full README from GitHub. Use when you need usage examples or a tool list (`mai_details` is summary-only). |
-| `mai_install` | Resolve the best package and write the config to all detected client config files. Supports `dryRun`.               |
-| `mai_remove`  | Remove a server from all client config files.                                                                       |
+| Tool          | Purpose                                                                                                                                                                                                                 |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mai_search`  | Search the registry by keyword. Returns name, description, version, supported package types.                                                                                                                            |
+| `mai_details` | Structured metadata for a server: env vars, arguments, transport, install command.                                                                                                                                      |
+| `mai_readme`  | Fetch the full README from GitHub. Use when you need usage examples or a tool list (`mai_details` is summary-only).                                                                                                     |
+| `mai_install` | Build the install plan (launch command, or URL for remotes) and write it to all detected client config files. Accepts `env` and `arguments`; `dryRun: true` returns the plan as `structuredContent` instead of writing. |
+| `mai_remove`  | Remove a server from all client config files.                                                                                                                                                                           |
 
 ## Usage as a CLI
 
@@ -70,7 +67,7 @@ The same operations are available as CLI commands using the `mai` binary:
 mai search filesystem
 mai info io.github.modelcontextprotocol/server-filesystem
 mai readme io.github.modelcontextprotocol/server-filesystem
-mai install io.github.modelcontextprotocol/server-filesystem --env API_KEY=xxx
+mai install io.github.modelcontextprotocol/server-filesystem --env API_KEY=xxx --arg root=/data
 mai install io.github.modelcontextprotocol/server-filesystem --dry-run
 mai remove io.github.modelcontextprotocol/server-filesystem
 mai --help
@@ -100,9 +97,9 @@ Set `MCP_SETTINGS_PATH` to override and target a single file.
 | `MCP_REGISTRY_PATH`  | `~/.mcp/mcp-registry.json` | Local cache file for registry data (1-hour TTL).                                                |
 | `MCP_PACKAGE_SCOPES` | `@modelcontextprotocol`    | Comma-separated npm scopes used by the npm-scope fallback when the Registry API is unreachable. |
 
-## CherryStudio / custom-config integration
+## Custom-config clients (`dryRun`)
 
-Clients that manage their own MCP config (e.g. SQLite-backed CherryStudio) should call `mai_install` with `dryRun: true`. The tool returns the resolved config payload without touching any files; the client persists it to its own storage.
+Clients that manage their own MCP config (e.g. SQLite-backed CherryStudio) should call `mai_install` with `dryRun: true`. The tool returns the install plan as `structuredContent` (mirrored as JSON text in `content`) without touching any files; the client persists `config` to its own storage and collects whatever is still listed as required.
 
 Request:
 
@@ -112,26 +109,49 @@ Request:
   "arguments": {
     "serverName": "io.github.modelcontextprotocol/server-filesystem",
     "env": { "API_KEY": "xxx" },
+    "arguments": { "root": "/data" },
     "dryRun": true
   }
 }
 ```
 
-Response `data` field:
+`structuredContent` for a package:
 
 ```json
 {
   "serverName": "io.github.modelcontextprotocol/server-filesystem",
-  "config": {
-    "command": "npx",
-    "args": ["-y", "@modelcontextprotocol/server-filesystem"],
-    "env": { "API_KEY": "xxx" }
-  },
+  "kind": "package",
   "registryType": "npm",
   "transport": { "type": "stdio" },
-  "requiredEnvVars": [{ "name": "API_KEY", "description": "...", "isSecret": true }]
+  "config": {
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-filesystem", "/data"],
+    "env": { "API_KEY": "xxx" }
+  },
+  "requiredEnvVars": [
+    { "name": "WORKSPACE_ROOT", "description": "...", "isSecret": false, "format": "filepath" }
+  ],
+  "requiredArguments": []
 }
 ```
+
+`structuredContent` for a remote-only server:
+
+```json
+{
+  "serverName": "com.example/remote",
+  "kind": "remote",
+  "transport": { "type": "streamable-http" },
+  "config": {
+    "type": "streamable-http",
+    "url": "https://mcp.example.com/mcp",
+    "headers": { "X-App": "…" }
+  },
+  "requiredHeaders": [{ "name": "Authorization", "description": "...", "isSecret": true }]
+}
+```
+
+`kind: "unsupported"` carries a `reason` (for example, a server that only ships an `mcpb` bundle).
 
 ## Prerequisites
 

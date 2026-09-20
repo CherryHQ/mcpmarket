@@ -96,7 +96,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  */
 export async function writeServerConfig(
   serverName: string,
-  config: { command: string; args: string[]; env?: Record<string, string> },
+  config: Record<string, unknown>,
 ): Promise<string[]> {
   const targets = await resolveConfigPaths();
   const written: string[] = [];

@@ -1,17 +1,21 @@
-import type { RegistryPackage } from './types.js';
+import type { ArgumentDef, RegistryPackage } from './types.js';
 
 const README_TIMEOUT = 10_000;
 const MAX_README_LENGTH = 40_000;
 
+/** Package formats a client can launch as a process. mcpb is a bundle the client installs itself. */
+const LAUNCHABLE_REGISTRY_TYPES = new Set(['npm', 'pypi', 'oci', 'nuget', 'cargo']);
+
 /**
- * Pick the best installable package from a list.
- * Prefers npm + stdio, then any stdio, then the first available.
+ * Pick the best launchable package from a list.
+ * Prefers npm + stdio, then any stdio, then the first launchable one.
  */
 export function pickBestPackage(packages: RegistryPackage[]): RegistryPackage | undefined {
+  const launchable = packages.filter(p => LAUNCHABLE_REGISTRY_TYPES.has(p.registryType));
   return (
-    packages.find(p => p.registryType === 'npm' && p.transport.type === 'stdio') ||
-    packages.find(p => p.transport.type === 'stdio') ||
-    packages[0]
+    launchable.find(p => p.registryType === 'npm' && p.transport.type === 'stdio') ||
+    launchable.find(p => p.transport.type === 'stdio') ||
+    launchable[0]
   );
 }
 
@@ -28,6 +32,11 @@ export function resolveCommand(pkg: RegistryPackage): string {
       return 'uvx';
     case 'oci':
       return 'docker';
+    case 'nuget':
+      return 'dnx';
+    case 'cargo':
+      // `cargo install` puts the binary on PATH under the crate name; there is no runner.
+      return pkg.identifier;
     default:
       return 'npx';
   }
@@ -35,8 +44,9 @@ export function resolveCommand(pkg: RegistryPackage): string {
 
 /**
  * Build the full argument list for running a package.
+ * `values` fills package arguments by name and wins over registry defaults.
  */
-export function resolveArgs(pkg: RegistryPackage): string[] {
+export function resolveArgs(pkg: RegistryPackage, values: Record<string, string> = {}): string[] {
   const args: string[] = [];
 
   switch (pkg.registryType) {
@@ -48,41 +58,48 @@ export function resolveArgs(pkg: RegistryPackage): string[] {
       break;
     case 'oci':
       args.push('run', '-i', '--rm');
-      if (pkg.runtimeArguments) {
-        for (const ra of pkg.runtimeArguments) {
-          if (ra.default) {
-            args.push(ra.name, ra.default);
-          }
-        }
+      for (const ra of pkg.runtimeArguments ?? []) {
+        if (ra.default) args.push(ra.name, ra.default);
       }
       args.push(pkg.identifier);
+      break;
+    case 'nuget':
+      args.push(pkg.version ? `${pkg.identifier}@${pkg.version}` : pkg.identifier);
+      break;
+    case 'cargo':
       break;
     default:
       args.push(pkg.identifier);
   }
 
-  if (pkg.packageArguments) {
-    for (const pa of pkg.packageArguments) {
-      if (pa.isRequired && pa.default) {
-        if (pa.type === 'positional') {
-          args.push(pa.default);
-        } else {
-          args.push(pa.name, pa.default);
-        }
-      }
-    }
+  for (const pa of pkg.packageArguments ?? []) {
+    const value = values[pa.name] ?? (pa.isRequired ? pa.default : undefined);
+    if (value === undefined) continue;
+    if (pa.type === 'positional') args.push(value);
+    else args.push(pa.name, value);
   }
 
   return args;
 }
 
 /**
- * Build a human-readable install command string.
+ * Required package arguments that neither `values` nor a registry default can fill.
+ */
+export function missingPackageArguments(
+  pkg: RegistryPackage,
+  values: Record<string, string> = {},
+): ArgumentDef[] {
+  return (pkg.packageArguments ?? []).filter(
+    pa => pa.isRequired && values[pa.name] === undefined && pa.default === undefined,
+  );
+}
+
+/**
+ * Build a human-readable install command string; empty when the package cannot be launched.
  */
 export function buildInstallCommand(pkg: RegistryPackage): string {
-  const cmd = resolveCommand(pkg);
-  const args = resolveArgs(pkg);
-  return `${cmd} ${args.join(' ')}`;
+  if (!LAUNCHABLE_REGISTRY_TYPES.has(pkg.registryType)) return '';
+  return `${resolveCommand(pkg)} ${resolveArgs(pkg).join(' ')}`;
 }
 
 // ---------------------------------------------------------------------------
